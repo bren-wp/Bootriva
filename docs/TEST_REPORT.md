@@ -38,3 +38,11 @@ restriction, identity mismatch, and image larger than media.
 - The Windows helper is embedded in the .exe as a resource and passed in-memory to Windows PowerShell via UTF-16LE EncodedCommand. It cannot be overridden by a neighboring unsigned sidecar .ps1 file.
 - Optical ISO installation is gated on explicit erasure confirmation and a separate PowerShell disk-identity check. No USB write occurs during GUI smoke tests.
 - Required proof before stable: real USB and UEFI/BIOS boot testing, successful Windows installation, execution/error logging and representative screenshots.
+
+## v0.2.2 official ISO catalog and UI
+
+- New UI smoke asserts that all 3 official ISO entries and website launch control exist.
+- The dropdown only launches first-party, static Microsoft web pages and never ships ISO binaries or executes remote code.
+- New rounded card layout is calculated from logical 96-DPI units with movable/resizable log section; real Windows desktop and screen-reader tests pending.
+- Windows GUI executable and smoke target now link shell32 for ShellExecuteW.
+- Signing and hardware certification remain unverified; release is a prerelease only.

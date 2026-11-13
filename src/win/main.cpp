@@ -3,6 +3,8 @@
 #include <commctrl.h>
 #include <commdlg.h>
 #include <dwmapi.h>
+#include <shellapi.h>
+#include <iterator>
 #include <atomic>
 #include <algorithm>
 #include <filesystem>
@@ -20,12 +22,13 @@ namespace {
 constexpr int ID_DEV=100,ID_REFRESH=101,ID_IMAGE=102,ID_BROWSE=103,ID_HASH=104,ID_FLASH=105,ID_LANG=106;
 constexpr int ID_PROGRESS=107,ID_STATUS=108,ID_LOG=109,ID_TITLE=110,ID_SUBTITLE=111,ID_L_DEVICE=112,ID_L_IMAGE=113,ID_INFO=114,ID_VERSION=115;
 constexpr int ID_WINUSB=116,ID_MODE=117,ID_MODE_LABEL=118;
+constexpr int ID_CATALOG=119,ID_CATALOG_LABEL=120,ID_CATALOG_OPEN=121,ID_CATALOG_NOTE=122;
 constexpr UINT MSG_PROGRESS=WM_APP+11,MSG_DONE=WM_APP+12;
 constexpr COLORREF BG=RGB(13,21,36),FG=RGB(235,243,250),MUTED=RGB(156,175,192),ACCENT=RGB(29,197,204),PANEL=RGB(24,36,56);
 struct ProgressEvent {unsigned value;std::wstring text;};
 struct DoneEvent {bool ok;std::wstring text;};
 struct App {
-    HWND hwnd{},dev{},refresh{},image{},browse{},hash{},flash{},winusb{},mode{},mode_label{},lang{},progress{},status{},log{},title{},subtitle{},device_label{},image_label{},info{},version{};
+    HWND hwnd{},dev{},refresh{},image{},browse{},hash{},flash{},winusb{},mode{},mode_label{},catalog{},catalog_label{},catalog_open{},catalog_note{},lang{},progress{},status{},log{},title{},subtitle{},device_label{},image_label{},info{},version{};
     HFONT font{},title_font{},small_font{};
     HBRUSH background{},panel{};
     std::vector<Drive> drives;
@@ -52,28 +55,76 @@ HWND child(HWND p,LPCWSTR type,LPCWSTR title,DWORD style,int id){
     return CreateWindowExW(0,type,title,WS_CHILD|WS_VISIBLE|style,0,0,0,0,p,reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),GetModuleHandleW(nullptr),nullptr);
 }
 void font(HWND h,HFONT f){SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(f),TRUE);}
+int scale(const App& a,int value){return MulDiv(value,static_cast<int>(GetDpiForWindow(a.hwnd)),96);}
 void layout(App& a,int w,int h){
     if(!a.dev)return;
-    const int margin=28,right=w-margin,full=w-2*margin,button=126,gap=12;
-    MoveWindow(a.title,margin,18,full-130,43,TRUE);
-    MoveWindow(a.subtitle,margin,65,full-130,24,TRUE);
-    MoveWindow(a.version,right-175,24,175,22,TRUE);
-    MoveWindow(a.lang,right-100,69,100,30,TRUE);
-    MoveWindow(a.device_label,margin,128,full,23,TRUE);
-    MoveWindow(a.dev,margin,154,full-button-gap,260,TRUE);
-    MoveWindow(a.refresh,right-button,153,button,33,TRUE);
-    MoveWindow(a.image_label,margin,217,full,23,TRUE);
-    MoveWindow(a.image,margin,244,full-button-gap,35,TRUE);
-    MoveWindow(a.browse,right-button,244,button,35,TRUE);
-    MoveWindow(a.hash,margin,303,170,41,TRUE);
-    MoveWindow(a.flash,right-202,300,202,46,TRUE);
-    MoveWindow(a.mode_label,margin,354,full,22,TRUE);
-    MoveWindow(a.mode,margin,380,std::max(150,full-214),230,TRUE);
-    MoveWindow(a.winusb,right-202,378,202,42,TRUE);
-    MoveWindow(a.info,margin,433,full,40,TRUE);
-    MoveWindow(a.progress,margin,478,full,17,TRUE);
-    MoveWindow(a.status,margin,501,full,27,TRUE);
-    MoveWindow(a.log,margin,537,full,std::max(60,h-551),TRUE);
+    const int dpi=static_cast<int>(GetDpiForWindow(a.hwnd));
+    const int width=MulDiv(w,96,dpi),height=MulDiv(h,96,dpi);
+    const int margin=30,right=width-margin,full=width-2*margin;
+    auto place=[&](HWND c,int x,int y,int cw,int ch){
+        if(c)MoveWindow(c,scale(a,x),scale(a,y),scale(a,std::max(1,cw)),scale(a,std::max(1,ch)),TRUE);
+    };
+    place(a.title,margin,20,full-225,43);
+    place(a.subtitle,margin,65,full-225,24);
+    place(a.version,right-196,24,196,22);
+    place(a.lang,right-104,70,104,33);
+    place(a.catalog_label,margin,136,full,24);
+    place(a.catalog,margin,169,full-226,250);
+    place(a.catalog_open,right-212,167,212,39);
+    place(a.catalog_note,margin,211,full,21);
+    place(a.device_label,margin,249,full,24);
+    place(a.dev,margin,282,full-148,230);
+    place(a.refresh,right-135,281,135,39);
+    place(a.image_label,margin,349,full,23);
+    place(a.image,margin,386,full-149,39);
+    place(a.browse,right-135,386,135,39);
+    place(a.hash,margin,435,175,39);
+    place(a.flash,right-218,431,218,45);
+    place(a.mode_label,margin,496,full,23);
+    place(a.mode,margin,534,full-232,230);
+    place(a.winusb,right-218,531,218,44);
+    place(a.info,margin,587,full,28);
+    place(a.progress,margin,649,full,16);
+    place(a.status,margin,679,full,24);
+    place(a.log,margin,711,full,std::max(52,height-738));
+}
+struct CatalogEntry {
+    const wchar_t* title;
+    const wchar_t* official_url;
+    const wchar_t* note_hr;
+    const wchar_t* note_en;
+};
+constexpr CatalogEntry official_catalog[]{
+    {L"Windows 11  |  x64  |  Microsoft ISO",
+     L"https://www.microsoft.com/hr-hr/software-download/windows11",
+     L"Službeni Microsoft ISO. Izdanje i jezik odabiru se na Microsoftovoj stranici.",
+     L"Official Microsoft ISO. Select edition and language on Microsoft's website."},
+    {L"Windows 10  |  ISO  |  prethodna generacija",
+     L"https://www.microsoft.com/en-us/software-download/windows10ISO",
+     L"Standardna podrška za Windows 10 završila je 14. 10. 2025.",
+     L"Standard Windows 10 support ended on October 14, 2025."},
+    {L"Windows Server 2025  |  Evaluation ISO",
+     L"https://www.microsoft.com/en-us/evalcenter/download-windows-server-2025",
+     L"Evaluacija 180 dana; BOOTRIVA još nije certificirana za Server instalacijski USB.",
+     L"180-day evaluation; BOOTRIVA Server installation media is not yet certified."}
+};
+void update_catalog_note(App& a){
+    if(!a.catalog_note || !a.catalog)return;
+    int id=static_cast<int>(SendMessageW(a.catalog,CB_GETCURSEL,0,0));
+    if(id<0 || id>=static_cast<int>(std::size(official_catalog)))return;
+    const auto& entry=official_catalog[id];
+    settext(a.catalog_note,a.english?entry.note_en:entry.note_hr);
+}
+void open_official_iso_catalog(App& a){
+    if(a.busy)return;
+    int id=static_cast<int>(SendMessageW(a.catalog,CB_GETCURSEL,0,0));
+    if(id<0 || id>=static_cast<int>(std::size(official_catalog)))return;
+    HINSTANCE result=ShellExecuteW(a.hwnd,L"open",official_catalog[id].official_url,nullptr,nullptr,SW_SHOWNORMAL);
+    if(reinterpret_cast<INT_PTR>(result)<=32)
+        status(a,tr(a,L"Microsoftovu stranicu nije moguće otvoriti.",L"Cannot open the Microsoft website."));
+    else
+        status(a,tr(a,L"Preuzmi ISO s Microsoftove stranice, zatim odaberi datoteku u BOOTRIVA-i.",
+                      L"Download the ISO from Microsoft, then choose the file in BOOTRIVA."));
 }
 void update_buttons(App& a){
     EnableWindow(a.refresh,!a.busy);EnableWindow(a.dev,!a.busy);EnableWindow(a.browse,!a.busy);
@@ -84,22 +135,27 @@ void update_buttons(App& a){
                            a.busy?(a.external_process?L"PLEASE WAIT":L"CANCEL"):L"WRITE USB"));
     EnableWindow(a.winusb,!a.busy && ready && a.image_info.is_iso_extension);
     EnableWindow(a.mode,!a.busy);
+    EnableWindow(a.catalog,!a.busy);
+    EnableWindow(a.catalog_open,!a.busy);
     EnableWindow(a.lang,!a.busy);
 }
 void translate(App& a){
     settext(a.title,L"BOOTRIVA");
     settext(a.subtitle,tr(a,L"Pokreni sustav. Sigurno i jednostavno.",L"Boot made simple. Safety built in."));
-    settext(a.version,L"v0.2.1  |  BRENDIGO");
+    settext(a.version,L"v0.2.2  |  BRENDIGO");
     settext(a.lang,a.english?L"HR  /  EN ✓":L"HR ✓  /  EN");
-    settext(a.device_label,tr(a,L"01   ODABERI USB UREĐAJ",L"01   SELECT USB DEVICE"));
-    settext(a.image_label,tr(a,L"02   ODABERI ISO / IMG / BIN DATOTEKU",L"02   SELECT ISO / IMG / BIN IMAGE"));
+    settext(a.catalog_label,tr(a,L"01   KATALOG SLUŽBENIH WINDOWS ISO",L"01   OFFICIAL WINDOWS ISO CATALOG"));
+    settext(a.catalog_open,tr(a,L"OTVORI MICROSOFT",L"OPEN MICROSOFT"));
+    settext(a.device_label,tr(a,L"02   ODABERI USB UREĐAJ",L"02   SELECT USB DEVICE"));
+    settext(a.image_label,tr(a,L"03   ODABERI ISO / IMG / BIN DATOTEKU",L"03   SELECT ISO / IMG / BIN IMAGE"));
     settext(a.refresh,tr(a,L"Osvježi",L"Refresh"));
     settext(a.browse,tr(a,L"Odaberi...",L"Browse..."));
     settext(a.hash,L"SHA-256");
-    settext(a.mode_label,tr(a,L"03   WINDOWS 10/11 INSTALACIJSKI USB",L"03   WINDOWS 10/11 INSTALLATION USB"));
+    settext(a.mode_label,tr(a,L"04   WINDOWS 10/11 INSTALACIJSKI USB",L"04   WINDOWS 10/11 INSTALLATION USB"));
     settext(a.winusb,tr(a,L"KREIRAJ WINDOWS USB",L"CREATE WINDOWS USB"));
     settext(a.info,tr(a,L"SIGURNOST  |  Uređaj se briše tek nakon potvrde BRISI. Provjeri broj i veličinu USB diska.",
                           L"SAFETY  |  Erasure requires typed confirmation. Verify the target USB disk number and capacity."));
+    update_catalog_note(a);
     update_buttons(a);
 }
 void refresh_drives(App& a){
@@ -305,7 +361,8 @@ void launch_windows_installer(App& a){
 void paint_button(DRAWITEMSTRUCT* item){
     const bool disabled=(item->itemState&ODS_DISABLED)!=0;
     const bool primary=item->CtlID==ID_FLASH || item->CtlID==ID_WINUSB;
-    COLORREF bg=disabled?RGB(58,69,81):(primary?ACCENT:PANEL);
+    const bool source=item->CtlID==ID_CATALOG_OPEN;
+    COLORREF bg=disabled?RGB(58,69,81):(primary?ACCENT:(source?RGB(27,91,115):RGB(34,51,71)));
     COLORREF fg=disabled?MUTED:(primary?RGB(8,29,36):FG);
     HBRUSH brush=CreateSolidBrush(bg);FillRect(item->hDC,&item->rcItem,brush);DeleteObject(brush);
     wchar_t title[128]{};GetWindowTextW(item->hwndItem,title,128);
@@ -323,6 +380,15 @@ bool create_controls(App& a){
     a.subtitle=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_SUBTITLE);
     a.version=child(a.hwnd,L"STATIC",L"",SS_RIGHT,ID_VERSION);
     a.lang=child(a.hwnd,L"BUTTON",L"HR / EN",BS_OWNERDRAW|WS_TABSTOP,ID_LANG);
+    a.catalog_label=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_CATALOG_LABEL);
+    a.catalog=child(a.hwnd,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_CATALOG);
+    a.catalog_open=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_CATALOG_OPEN);
+    a.catalog_note=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_CATALOG_NOTE);
+    if(a.catalog){
+        for(const auto& item:official_catalog)
+            SendMessageW(a.catalog,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(item.title));
+        SendMessageW(a.catalog,CB_SETCURSEL,0,0);
+    }
     a.device_label=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_L_DEVICE);
     a.dev=child(a.hwnd,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_DEV);
     a.refresh=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_REFRESH);
@@ -344,12 +410,12 @@ bool create_controls(App& a){
     a.status=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_STATUS);
     a.log=child(a.hwnd,L"EDIT",L"",ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_BORDER,ID_LOG);
     // Win32 CreateWindowEx can fail. Check every required child before dereferencing it.
-    for(HWND h:{a.title,a.subtitle,a.version,a.lang,a.device_label,a.dev,a.refresh,
+    for(HWND h:{a.title,a.subtitle,a.version,a.lang,a.catalog_label,a.catalog,a.catalog_open,a.catalog_note,a.device_label,a.dev,a.refresh,
                 a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,
                 a.info,a.progress,a.status,a.log}){
         if(!h)return false;
     }
-    for(HWND h:{a.subtitle,a.version,a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,a.info,a.status,a.log,a.lang})font(h,a.font);
+    for(HWND h:{a.subtitle,a.version,a.catalog_label,a.catalog,a.catalog_open,a.catalog_note,a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,a.info,a.status,a.log,a.lang})font(h,a.font);
     font(a.title,a.title_font);font(a.version,a.small_font);font(a.info,a.small_font);font(a.log,a.small_font);
     translate(a);
     RECT r;GetClientRect(a.hwnd,&r);layout(a,r.right-r.left,r.bottom-r.top);
@@ -383,9 +449,19 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         return 0;
     }
     case WM_GETMINMAXINFO:{
-        auto* m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={760,700};return 0;
+        auto* m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={scale(a,810),scale(a,850)};return 0;
     }
     case WM_SIZE:layout(a,LOWORD(l),HIWORD(l));return 0;
+    case WM_DPICHANGED:{
+        const auto* bounds=reinterpret_cast<const RECT*>(l);
+        if(bounds)SetWindowPos(hwnd,nullptr,bounds->left,bounds->top,
+                               bounds->right-bounds->left,bounds->bottom-bounds->top,
+                               SWP_NOZORDER|SWP_NOACTIVATE);
+        RECT client{};GetClientRect(hwnd,&client);
+        layout(a,client.right,client.bottom);
+        InvalidateRect(hwnd,nullptr,TRUE);
+        return 0;
+    }
     case WM_COMMAND:
         switch(LOWORD(w)){
         case ID_REFRESH:if(!a.busy)refresh_drives(a);break;
@@ -393,6 +469,8 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         case ID_LANG:if(!a.busy){a.english=!a.english;translate(a);}break;
         case ID_HASH:if(!a.busy)launch(a,false);break;
         case ID_WINUSB:if(!a.busy)launch_windows_installer(a);break;
+        case ID_CATALOG_OPEN:if(!a.busy)open_official_iso_catalog(a);break;
+        case ID_CATALOG:if(HIWORD(w)==CBN_SELCHANGE)update_catalog_note(a);break;
         case ID_FLASH:if(a.busy){a.cancel=true;status(a,tr(a,L"Zatraženo zaustavljanje...",L"Cancellation requested..."));}
                       else launch(a,true);break;
         default:break;
@@ -417,17 +495,30 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         HDC hdc=reinterpret_cast<HDC>(w);SetTextColor(hdc,FG);SetBkColor(hdc,PANEL);
         HWND control=reinterpret_cast<HWND>(l);
         if(control==a.title){SetTextColor(hdc,ACCENT);SetBkColor(hdc,BG);return reinterpret_cast<LRESULT>(a.background);}
-        if(control==a.subtitle||control==a.version||control==a.device_label||control==a.image_label||control==a.info||control==a.status){
-            SetTextColor(hdc,(control==a.info||control==a.version||control==a.subtitle)?MUTED:FG);
+        if(control==a.subtitle||control==a.version){
+            SetTextColor(hdc,MUTED);
             SetBkColor(hdc,BG);return reinterpret_cast<LRESULT>(a.background);
         }
+        SetTextColor(hdc,(control==a.catalog_note||control==a.info)?MUTED:FG);
         return reinterpret_cast<LRESULT>(a.panel);
     }
     case WM_ERASEBKGND:return 1; // One background paint; avoid a white startup flash.
     case WM_PAINT:{
         PAINTSTRUCT ps{};HDC dc=BeginPaint(hwnd,&ps);
         RECT r{};GetClientRect(hwnd,&r);FillRect(dc,&r,a.background);
-        RECT top{0,108,r.right,110};HBRUSH line=CreateSolidBrush(RGB(32,54,72));FillRect(dc,&top,line);DeleteObject(line);
+        int dpi=static_cast<int>(GetDpiForWindow(hwnd));
+        auto s=[dpi](int x){return MulDiv(x,dpi,96);};
+        int logicalW=MulDiv(r.right,96,dpi),logicalH=MulDiv(r.bottom,96,dpi);
+        RECT top{0,s(112),r.right,s(114)};
+        HBRUSH line=CreateSolidBrush(RGB(27,90,110));FillRect(dc,&top,line);DeleteObject(line);
+        HPEN edge=CreatePen(PS_SOLID,std::max(1,s(1)),RGB(46,66,89));
+        HBRUSH surface=CreateSolidBrush(PANEL);
+        HGDIOBJ oldPen=SelectObject(dc,edge),oldBrush=SelectObject(dc,surface);
+        const int boxes[][2]={{124,235},{242,333},{341,486},{493,627},{635,logicalH-16}};
+        for(const auto& segment:boxes)if(segment[1]>segment[0])
+            RoundRect(dc,s(17),s(segment[0]),s(logicalW-17),s(segment[1]),s(16),s(16));
+        SelectObject(dc,oldPen);SelectObject(dc,oldBrush);
+        DeleteObject(edge);DeleteObject(surface);
         EndPaint(hwnd,&ps);return 0;
     }
     case WM_CLOSE:
@@ -459,13 +550,13 @@ int run_app(HINSTANCE instance,int show,bool smoke){
     if(!RegisterClassExW(&klass))return 1;
     App app;
     app.hwnd=CreateWindowExW(0,klass.lpszClassName,L"BOOTRIVA — USB Creator",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
-                             CW_USEDEFAULT,CW_USEDEFAULT,880,750,nullptr,nullptr,instance,&app);
+                             CW_USEDEFAULT,CW_USEDEFAULT,940,910,nullptr,nullptr,instance,&app);
     if(!app.hwnd)return 1;
     ShowWindow(app.hwnd,show);UpdateWindow(app.hwnd);
     if(smoke){
         // Test the actual Win32 initialization path, not a mock UI.
         constexpr int required[]={ID_TITLE,ID_SUBTITLE,ID_DEV,ID_REFRESH,ID_IMAGE,
-            ID_BROWSE,ID_HASH,ID_FLASH,ID_MODE,ID_WINUSB,ID_LANG,ID_PROGRESS,ID_STATUS,ID_LOG};
+            ID_BROWSE,ID_HASH,ID_FLASH,ID_MODE,ID_WINUSB,ID_CATALOG,ID_CATALOG_OPEN,ID_CATALOG_NOTE,ID_LANG,ID_PROGRESS,ID_STATUS,ID_LOG};
         bool valid=true;
         for(int id:required){
             HWND control=GetDlgItem(app.hwnd,id);
@@ -481,6 +572,11 @@ int run_app(HINSTANCE instance,int show,bool smoke){
         RECT bounds{};
         if(!GetClientRect(app.hwnd,&bounds) || bounds.right<500 || bounds.bottom<400)
             valid=false;
+        HWND catalog=GetDlgItem(app.hwnd,ID_CATALOG);
+        if(!catalog || SendMessageW(catalog,CB_GETCOUNT,0,0)!=static_cast<LRESULT>(std::size(official_catalog)))
+            valid=false;
+        HWND website=GetDlgItem(app.hwnd,ID_CATALOG_OPEN);
+        if(!website || !IsWindowEnabled(website))valid=false;
         DestroyWindow(app.hwnd);
         return valid?0:3;
     }

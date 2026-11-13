@@ -22,3 +22,10 @@
 - [ ] Windows To Go validation and Windows licensing requirements
 - [ ] Accessibility, 200%-400% scaling, internationalization, compatibility and penetration tests
 - [ ] Signed public stable releases after real hardware certification; unsigned builds must be labeled
+
+## v0.2.2 ISO catalog and native UI refinement
+
+- [x] Built-in curated list of official Microsoft Windows 11, Windows 10 and Windows Server 2025 Evaluation download pages; no copyrighted ISO binary redistribution.
+- [x] Native UI sectioned into visual cards, revised spacing, logical-DPI layout with flexible activity log, and correct UI control discovery smoke tests.
+- [ ] Capture real Windows screenshots at 100%, 150% and 200% scaling; refine font scaling based on those captures.
+- [ ] Qualify BIOS/UEFI media with real removable USB hardware and verify Microsoft installer compatibility.

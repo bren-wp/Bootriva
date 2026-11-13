@@ -41,6 +41,28 @@ Every version-tagged build is configured to publish both **`BOOTRIVA-Portable.ex
 
 **Portable:** no installation required; run it as administrator. **Setup:** traditional installation and Start menu shortcuts.
 
+## ISO library — directly inside BOOTRIVA
+
+Choose from a built-in selection of legitimate, official Windows download
+destinations. BOOTRIVA opens the selected Microsoft page in your browser and
+lets you download the current ISO with Microsoft's choice of language/edition.
+Then select your downloaded file in BOOTRIVA and choose the USB workflow.
+
+- **Windows 11 x64** — official multi-edition Microsoft ISO page
+- **Windows 10** — official legacy download page; standard support ended 2025-10-14
+- **Windows Server 2025 Evaluation** — official 180-day Microsoft evaluation
+
+ISO binary files are **not bundled** with BOOTRIVA: they are multi-gigabyte,
+may need edition selection and licensing, and direct links can expire. The
+server entry is a download reference, not a claim of certified server USB support.
+
+### Refined native interface (v0.2.2)
+
+The Windows app now separates source discovery, USB selection, image selection,
+Windows setup and activity into dedicated dark cards, with improved spacing,
+a resizable activity panel, clearer disabled-button states and a DPI-aware layout.
+Real screenshot capture and physical Windows hardware testing are still required.
+
 ## 🪟 Windows 10 / 11 installation USB — experimental
 
 Choose a **Windows 10/11 ISO**, connect a disposable USB device of at least 8 GiB, and select the installer mode in the new Windows USB section: **UEFI / FAT32**, **Legacy BIOS / FAT32**, or **Legacy BIOS / NTFS**. Then select **CREATE WINDOWS USB**. BOOTRIVA requires typed erasure confirmation before launching its embedded Windows PowerShell assistant with an independent device check.
