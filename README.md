@@ -1,6 +1,7 @@
 <div align="center">
 
-# ⚡ BOOTRIVA
+<img src="assets/bootriva-logo.svg" width="490" alt="BOOTRIVA — Create. Flash. Boot." />
+
 ### Create. Flash. Boot.
 
 **Create bootable USB media with control and confidence.**
