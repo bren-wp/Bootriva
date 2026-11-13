@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Bootriva VERSION 0.2.5 LANGUAGES CXX)
+project(Bootriva VERSION 0.2.6 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -31,6 +31,25 @@ if(WIN32)
     target_link_options(Bootriva PRIVATE /MANIFEST:NO)
   endif()
   set_target_properties(Bootriva PROPERTIES OUTPUT_NAME "Bootriva")
+  # Export native Win64 C ABI for the genuine WinUI 3 frontend.
+  # Keep the same hardened physical-drive engine in classic and modern UI.
+  add_library(bootriva_bridge SHARED src/win/bridge.cpp src/win/usb_win.cpp)
+  target_include_directories(bootriva_bridge PUBLIC ${PROJECT_SOURCE_DIR}/include)
+  target_compile_definitions(bootriva_bridge PRIVATE
+    BOOTRIVA_BRIDGE_EXPORTS UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_link_libraries(bootriva_bridge PRIVATE bootriva_core bcrypt)
+  set_target_properties(bootriva_bridge PROPERTIES OUTPUT_NAME "bootriva_bridge")
+  if(MSVC)
+    target_compile_options(bootriva_bridge PRIVATE /W4 /permissive- /utf-8)
+    set_property(TARGET bootriva_bridge PROPERTY
+      MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  endif()
+  # Safe regression: bridge tests use only temporary image files and invalid
+  # destructive confirmations. They never write or format physical disks.
+  add_executable(bootriva_bridge_tests tests/bridge_tests.cpp)
+  target_link_libraries(bootriva_bridge_tests PRIVATE bootriva_bridge)
+  add_test(NAME native_bridge_safety COMMAND bootriva_bridge_tests)
+  set_tests_properties(native_bridge_safety PROPERTIES TIMEOUT 45)
   # This target deliberately has no embedded requireAdministrator manifest.
   # It exercises the real window/control creation path on CI and catches the
   # "empty window" regression without touching a USB disk.

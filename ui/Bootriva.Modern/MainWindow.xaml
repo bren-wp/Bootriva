@@ -105,21 +105,45 @@
                         <TextBlock Text="Pregled prijenosnih uređaja (bez brisanja podataka)"
                                    Style="{StaticResource InputLabel}"/>
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                            <ComboBox x:Name="DriveCombo" HorizontalAlignment="Stretch"
+                            <ComboBox x:Name="DriveCombo" SelectionChanged="DriveSelected" HorizontalAlignment="Stretch"
                                       PlaceholderText="Nema učitanih USB uređaja"/>
-                            <Button Grid.Column="1" Content="Osvježi" Click="RefreshDrives"
+                            <Button x:Name="RefreshButton" Grid.Column="1" Content="Osvježi" Click="RefreshDrives"
                                     Padding="15,9"/>
                         </Grid>
-                        <InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
-                                 Title="Sigurnosna granica"
-                                 Message="Ovo je nova WinUI 3 razvojna aplikacija. Zapisivanje na USB još nije uključeno dok se ne verificira veza s postojećim C++ pogonom."
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                            <Button x:Name="FlashButton" Click="ConfirmAndFlash" IsEnabled="False"
+                                    Content="RAW zapis i verifikacija" Style="{StaticResource AccentButtonStyle}"/>
+                            <Button x:Name="CancelButton" Click="CancelOperation" IsEnabled="False"
+                                    Content="Otkaži"/>
+                            <Button x:Name="ElevateButton" Click="RequestElevation" Content="Administrator"/>
+                        </StackPanel>
+                        <InfoBar x:Name="PrivilegeInfo" IsOpen="True" IsClosable="False"
+                                 Severity="Warning" Title="USB zapis je eksperimentalan"
+                                 Message="Koristi samo USB bez važnih podataka. Zahtijeva provjeru i potvrdu."
                                  Margin="0,12,0,0"/>
                     </StackPanel>
                 </Border>
 
                 <Border Style="{StaticResource SectionCard}">
+                    <StackPanel Spacing="9">
+                        <TextBlock Text="04  ·  Multiboot ISO biblioteka (Ventoy)"
+                                   Style="{StaticResource SectionTitle}"/>
+                        <TextBlock Text="Pregled ISO datoteka na već pripremljenom Ventoy USB-u. Nema instalacije bootloadera niti formatiranja."
+                                   TextWrapping="Wrap" Foreground="#667790"/>
+                        <Button x:Name="VentoyBrowseButton" Content="Pregledaj mapu s Ventoy ISO datotekama"
+                                Click="BrowseVentoyFolder" HorizontalAlignment="Left"/>
+                        <TextBlock x:Name="VentoyPath" Text="Nije odabrana mapa."
+                                   Foreground="#65778C" TextWrapping="Wrap"/>
+                        <ListView x:Name="VentoyFiles" MaxHeight="140"
+                                  SelectionMode="None" AutomationProperties.Name="ISO datoteke u odabranoj mapi"/>
+                        <TextBlock x:Name="VentoyNotice" Text="Samo pregled datoteka; pokretanje i kompatibilnost nisu verificirani."
+                                   FontSize="12" TextWrapping="Wrap" Foreground="#667790"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Style="{StaticResource SectionCard}">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="04  ·  Aktivnost i sigurnost"
+                        <TextBlock Text="05  ·  Aktivnost i sigurnost"
                                    Style="{StaticResource SectionTitle}"/>
                         <ProgressBar x:Name="OperationProgress" Height="4" Minimum="0"
                                      Maximum="100" Value="0"/>
@@ -129,7 +153,7 @@
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="BOOTRIVA 0.2.5  ·  BRENDIGO  ·  brendigo.com"
+                <TextBlock Text="BOOTRIVA 0.2.6  ·  BRENDIGO  ·  brendigo.com"
                            HorizontalAlignment="Center" FontSize="11" Foreground="#8996A9"/>
             </StackPanel>
         </ScrollViewer>
@@ -137,7 +161,7 @@
         <Grid Grid.Row="2" Background="White" Padding="22,12"
               ColumnDefinitions="*,Auto">
             <StackPanel VerticalAlignment="Center" Spacing="3">
-                <TextBlock Text="Nativni Windows 11 dizajn" FontWeight="SemiBold"
+                <TextBlock Text="WinUI 3 · C++ USB pogon" FontWeight="SemiBold"
                            Foreground="#19324D" FontSize="12"/>
                 <TextBlock Text="WinUI 3 / Windows App SDK" FontSize="11"
                            Foreground="#8794A4"/>
@@ -145,7 +169,7 @@
             <Border Grid.Column="1" Background="#E9F7F0"
                     CornerRadius="9" Padding="10,7"
                     VerticalAlignment="Center">
-                <TextBlock Text="READ-ONLY PREVIEW" FontSize="11"
+                <TextBlock Text="C++ ENGINE · PREVIEW" FontSize="11"
                            FontWeight="SemiBold" Foreground="#1D7851"/>
             </Border>
         </Grid>

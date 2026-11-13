@@ -85,15 +85,28 @@ jobs:
           if (-not (Test-Path $exe) -or (Get-Item $exe).Length -lt 1048576) {
             throw 'WinUI 3 preview binary missing or unexpectedly small'
           }
-          Copy-Item $exe 'modern-dist/BOOTRIVA-WinUI3-Preview.exe'
-          $hash = (Get-FileHash 'modern-dist/BOOTRIVA-WinUI3-Preview.exe' -Algorithm SHA256).Hash
-          "$hash  BOOTRIVA-WinUI3-Preview.exe" | Set-Content -Encoding ascii 'modern-dist/SHA256SUMS-WINUI3.txt'
+          # Build the same USB safety engine as a versioned C ABI DLL.
+          cmake -S . -B bridge-build -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'CMake bridge configuration failed' }
+          cmake --build bridge-build --config Release --target bootriva_bridge bootriva_bridge_tests
+          if ($LASTEXITCODE -ne 0) { throw 'Native bridge build failed' }
+          ctest --test-dir bridge-build -C Release -R native_bridge_safety --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Native bridge safety tests failed' }
+          $dll = 'bridge-build/Release/bootriva_bridge.dll'
+          if (-not (Test-Path $dll)) { throw 'Required native bridge DLL missing' }
+          Copy-Item $dll 'modern-dist/bootriva_bridge.dll'
+          # The native DLL is a REQUIRED sidecar. Do not distribute a broken
+          # standalone WinUI executable that fails when downloaded alone.
+          Compress-Archive -Path @($exe, 'modern-dist/bootriva_bridge.dll') `
+            -DestinationPath 'modern-dist/BOOTRIVA-WinUI3-Preview.zip' -CompressionLevel Optimal
+          $hash = (Get-FileHash 'modern-dist/BOOTRIVA-WinUI3-Preview.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  BOOTRIVA-WinUI3-Preview.zip" | Set-Content -Encoding ascii 'modern-dist/SHA256SUMS-WINUI3.txt'
       - name: Upload genuine WinUI 3 preview
         uses: actions/upload-artifact@v4
         with:
           name: BOOTRIVA-WinUI3-x64-unsigned-preview
           path: |
-            modern-dist/BOOTRIVA-WinUI3-Preview.exe
+            modern-dist/BOOTRIVA-WinUI3-Preview.zip
             modern-dist/SHA256SUMS-WINUI3.txt
           if-no-files-found: error
   publish-preview:
@@ -108,7 +121,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      PREVIEW_TAG: v0.2.5-preview.1
+      PREVIEW_TAG: v0.2.6-preview.1
     steps:
       - name: Download verified Windows binaries
         uses: actions/download-artifact@v4
@@ -136,10 +149,10 @@ jobs:
               release/BOOTRIVA-Portable.exe \
               release/BOOTRIVA-Setup.exe \
               release/SHA256SUMS.txt \
-              modern/BOOTRIVA-WinUI3-Preview.exe \
+              modern/BOOTRIVA-WinUI3-Preview.zip \
               modern/SHA256SUMS-WINUI3.txt \
               --target "${{ github.sha }}" \
-              --title "BOOTRIVA $PREVIEW_TAG · Genuine WinUI 3 shell" \
-              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Adds an actual Windows App SDK WinUI 3 native XAML interface, official ISO catalog, ISO picker, read-only removable drive list and SHA-256. This separate WinUI preview does not write USB. Existing functional classic Portable and Setup retain the C++ engine until feature parity is safely achieved. Real USB hardware validation and genuine screenshots remain pending." \
+              --title "BOOTRIVA $PREVIEW_TAG · Native C++ bridge and WinUI USB engine" \
+              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Adds a versioned native C++ bridge for WinUI: eligible physical USB enumeration, ISO inspection, SHA-256, confirmed raw IMG/hybrid ISO writes with full read-back verification and cancellation. Adds read-only Ventoy multiboot image library. Windows installation ISO writer remains in the classic app, and Ventoy/Rufus bootloader code is NOT bundled. Physical USB validation is pending; unsigned prerelease only." \
               --prerelease
           fi

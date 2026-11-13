@@ -1,15 +1,19 @@
 #include "bootriva/bridge.h"
 #include <Windows.h>
 #include <array>
-#include <cassert>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
 int main(){
-    assert(br_abi_version()==0x00020006u);
+    auto expect=[](bool value,const char* label)->bool{
+        if(!value)std::cerr<<"Bridge safety test failure: "<<label<<'\n';
+        return value;
+    };
+    if(!expect(br_abi_version()==0x00020006u,"ABI version"))return 1;
     BrImage empty{};
-    assert(br_inspect_image(nullptr,&empty)==0);
-    assert(empty.error[0]!=0);
+    if(!expect(br_inspect_image(nullptr,&empty)==0 && empty.error[0]!=0,
+               "invalid image refusal"))return 2;
     const auto temp=std::filesystem::temp_directory_path()/
         (L"bootriva-bridge-smoke-"+std::to_wstring(GetCurrentProcessId())+L".img");
     {
@@ -21,18 +25,18 @@ int main(){
         out.write(reinterpret_cast<const char*>(bytes.data()),bytes.size());
     }
     BrImage image{};
-    assert(br_inspect_image(temp.c_str(),&image)==1);
-    assert(image.bytes==1024 && image.mbr==1);
+    if(!expect(br_inspect_image(temp.c_str(),&image)==1 &&
+               image.bytes==1024 && image.mbr==1,"image header"))return 3;
     auto* task=br_task_create();
-    assert(task);
+    if(!expect(task!=nullptr,"create native task"))return 4;
     wchar_t message[512]{};
-    assert(br_run_sha256(task,temp.c_str(),nullptr,nullptr,message,512)==1);
-    assert(std::wstring(message).find(L"SHA-256: ")==0);
+    const bool hash=br_run_sha256(task,temp.c_str(),nullptr,nullptr,message,512)==1;
+    if(!expect(hash && std::wstring(message).rfind(L"SHA-256: ",0)==0,"native sha256"))return 5;
     BrDrive fake{};fake.disk_number=0;
-    // Safety regression: missing/incorrect confirmation must be rejected
-    // before opening or even enumerating physical disks.
-    assert(br_run_flash(task,&fake,temp.c_str(),L"NO",nullptr,nullptr,message,512)==0);
-    assert(std::wstring(message).find(L"BRISI")!=std::wstring::npos);
+    const bool refused=br_run_flash(task,&fake,temp.c_str(),L"NO",
+        nullptr,nullptr,message,512)==0;
+    if(!expect(refused && std::wstring(message).find(L"BRISI")!=std::wstring::npos,
+               "invalid destructive confirmation"))return 6;
     br_task_cancel(task);
     br_task_destroy(task);
     std::error_code ec;
