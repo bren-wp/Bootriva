@@ -3,6 +3,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using System.Security.Principal;
 using Windows.Graphics;
 using Windows.Storage.Pickers;
@@ -213,4 +215,36 @@ public sealed partial class MainWindow : Window
         CancelButton.IsEnabled=false;
         SetStatus("Otkazivanje zatraženo. USB može sadržavati nepotpune podatke.");
     }
+    // Ventoy interoperability is deliberately non-destructive in this phase:
+    // inspect existing multi-ISO folders only, never install a bootloader or
+    // assume that an arbitrary folder is a bootable Ventoy USB.
+    private async void BrowseVentoyFolder(object sender,RoutedEventArgs e)
+    {
+        if(_busy)return;
+        try {
+            var picker=new FolderPicker();
+            InitializeWithWindow.Initialize(picker,WindowNative.GetWindowHandle(this));
+            picker.FileTypeFilter.Add("*");
+            var folder=await picker.PickSingleFolderAsync();
+            if(folder==null)return;
+            VentoyFiles.Items.Clear();
+            VentoyPath.Text=folder.Path;
+            var path=folder.Path;
+            var files=await Task.Run(()=>Directory.EnumerateFiles(path,"*",SearchOption.TopDirectoryOnly)
+                .Where(f=>new[]{".iso",".img",".wim",".vhd",".vhdx",".efi"}.Contains(
+                    Path.GetExtension(f),StringComparer.OrdinalIgnoreCase))
+                .OrderBy(Path.GetFileName,StringComparer.OrdinalIgnoreCase).Take(150).ToArray());
+            foreach(var file in files) {
+                var info=new FileInfo(file);
+                VentoyFiles.Items.Add($"{info.Name}  ·  {info.Length/1048576.0:F0} MiB");
+            }
+            VentoyNotice.Text=files.Length==0
+                ? "Nema pronađenih slika u korijenu odabrane mape."
+                : $"Prikazano {files.Length} slika u odabranoj mapi. Ovo NE dokazuje da je USB bootabilan.";
+            SetStatus("Ventoy mapa pregledana bez promjene datoteka ili particija.");
+        } catch(Exception ex) {
+            VentoyNotice.Text="Pregled multiboot mape nije uspio: "+ex.Message;
+        }
+    }
+
 }
