@@ -124,8 +124,11 @@ void layout(App& a,int w,int h){
     y+=119+logHeight+17;
     a.card_ranges[4]={activityTop,y};
     a.content_height=y+14;
+    const int priorScroll=a.scroll_y;
     const int maxScroll=std::max(0,scale(a,a.content_height)-h);
     a.scroll_y=std::clamp(a.scroll_y,0,maxScroll);
+    // Re-run placement once if a resize shortened the scrollable document.
+    if(a.scroll_y!=priorScroll){layout(a,w,h);return;}
     SCROLLINFO info{sizeof(info)};
     info.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
     info.nMin=0;
@@ -137,7 +140,7 @@ void layout(App& a,int w,int h){
 void scroll_to(App& a,int desired){
     RECT client{};
     GetClientRect(a.hwnd,&client);
-    const int maxScroll=std::max(0,scale(a,a.content_height)-(client.bottom-client.top));
+    const int maxScroll=std::max(0,scale(a,a.content_height)-static_cast<int>(client.bottom-client.top));
     int target=std::clamp(desired,0,maxScroll);
     if(target==a.scroll_y)return;
     a.scroll_y=target;
@@ -623,8 +626,8 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         PAINTSTRUCT ps{};HDC dc=BeginPaint(hwnd,&ps);
         RECT viewport{};GetClientRect(hwnd,&viewport);
         HDC buffer=CreateCompatibleDC(dc);
-        HBITMAP pixels=CreateCompatibleBitmap(dc,std::max(1,viewport.right),
-                                              std::max(1,viewport.bottom));
+        HBITMAP pixels=CreateCompatibleBitmap(dc,std::max(1,static_cast<int>(viewport.right)),
+                                              std::max(1,static_cast<int>(viewport.bottom)));
         if(!buffer || !pixels){
             FillRect(dc,&viewport,a.background);
             if(pixels)DeleteObject(pixels);
@@ -644,7 +647,7 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
             int top=s(card.first)-a.scroll_y;
             int bottom=s(card.second)-a.scroll_y;
             if(bottom<0 || top>viewport.bottom)continue;
-            RoundRect(buffer,s(16),top,s(std::max(390,logicalWidth-16)),bottom,s(14),s(14));
+            RoundRect(buffer,s(16),top,s(std::max(20,logicalWidth-16)),bottom,s(14),s(14));
         }
         SelectObject(buffer,oldPen);SelectObject(buffer,oldBrush);
         DeleteObject(border);DeleteObject(surface);
