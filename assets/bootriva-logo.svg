@@ -1,0 +1,15 @@
+<svg width="640" height="160" viewBox="0 0 640 160" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title description">
+  <title id="title">BOOTRIVA</title><desc id="description">Bootriva logo with stylized USB flash and lightning glyph</desc>
+  <defs>
+    <linearGradient id="a" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#1CF0D0"/><stop offset="1" stop-color="#20B4F6"/></linearGradient>
+  </defs>
+  <rect x="3" y="3" width="152" height="152" rx="37" fill="#0C172C"/>
+  <rect x="21" y="21" width="116" height="116" rx="25" fill="#122B40" stroke="#24485C" stroke-width="2"/>
+  <path d="M55 41h48v25h10v15H45V66h10z" fill="url(#a)"/>
+  <path d="M55 81h48v18a15 15 0 0 1-15 15H70a15 15 0 0 1-15-15z" fill="#20C8D7"/>
+  <path d="M80 59L64 93h16l-5 21 24-35H82l8-20z" fill="#092038"/>
+  <rect x="66" y="47" width="10" height="14" rx="2" fill="#0C172C"/>
+  <rect x="82" y="47" width="10" height="14" rx="2" fill="#0C172C"/>
+  <text x="182" y="93" font-family="Segoe UI,Arial,sans-serif" font-weight="800" font-size="63" letter-spacing="2" fill="#EAF4F9">BOOTRIVA</text>
+  <text x="187" y="123" font-family="Segoe UI,Arial,sans-serif" font-size="20" font-weight="600" letter-spacing="4" fill="#22C9DB">CREATE · FLASH · BOOT</text>
+</svg>
