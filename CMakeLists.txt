@@ -3,6 +3,11 @@ project(Bootriva VERSION 0.2.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# Keep the CRT consistent across the executable, core static library and tests.
+# /MT in Release avoids dependency on an external Visual C++ Redistributable.
+if(MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 add_library(bootriva_core STATIC src/core.cpp)
 target_include_directories(bootriva_core PUBLIC ${PROJECT_SOURCE_DIR}/include)
 if(MSVC)
