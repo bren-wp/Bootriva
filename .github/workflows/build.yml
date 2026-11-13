@@ -80,7 +80,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      PREVIEW_TAG: v0.2.1-preview.1
+      PREVIEW_TAG: v0.2.2-preview.1
     steps:
       - name: Download verified Windows binaries
         uses: actions/download-artifact@v4
@@ -103,7 +103,7 @@ jobs:
               release/BOOTRIVA-Setup.exe \
               release/SHA256SUMS.txt \
               --target "${{ github.sha }}" \
-              --title "BOOTRIVA $PREVIEW_TAG · Windows ISO GUI preview" \
-              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Adds Windows 10/11 ISO assistant in the GUI with UEFI/FAT32 and BIOS/FAT32/NTFS modes. Real USB hardware validation and genuine screenshots remain pending." \
+              --title "BOOTRIVA $PREVIEW_TAG · ISO catalog and polished UI" \
+              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Adds in-app official Microsoft ISO catalog, refined native cards and DPI-aware layout, plus Windows 10/11 installation assistant. Real USB hardware validation and genuine screenshots remain pending." \
               --prerelease
           fi
