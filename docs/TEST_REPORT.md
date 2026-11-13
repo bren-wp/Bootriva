@@ -31,3 +31,10 @@ restriction, identity mismatch, and image larger than media.
 - Correction: initialize owner HWND during `WM_NCCREATE`; fail gracefully if required controls are absent; prevent parent painting over child windows.
 - Regression: native `bootriva_ui_smoke` Windows CTest checks required visible controls and window title; no disk operation or admin elevation.
 - Evidence still needed: successfully completed Windows Actions test and real desktop screenshot after rebuilding the application.
+
+## BOOTRIVA v0.2.1 preview feature verification
+
+- Native GUI exposes UEFI/FAT32, legacy BIOS/FAT32 and legacy BIOS/NTFS selections for Windows 10/11 setup ISO media.
+- The Windows helper is embedded in the .exe as a resource and passed in-memory to Windows PowerShell via UTF-16LE EncodedCommand. It cannot be overridden by a neighboring unsigned sidecar .ps1 file.
+- Optical ISO installation is gated on explicit erasure confirmation and a separate PowerShell disk-identity check. No USB write occurs during GUI smoke tests.
+- Required proof before stable: real USB and UEFI/BIOS boot testing, successful Windows installation, execution/error logging and representative screenshots.

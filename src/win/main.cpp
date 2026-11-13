@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <thread>
 #include <vector>
 #pragma comment(lib, "comctl32.lib")
@@ -18,12 +19,13 @@ using bootriva::win::Drive;
 namespace {
 constexpr int ID_DEV=100,ID_REFRESH=101,ID_IMAGE=102,ID_BROWSE=103,ID_HASH=104,ID_FLASH=105,ID_LANG=106;
 constexpr int ID_PROGRESS=107,ID_STATUS=108,ID_LOG=109,ID_TITLE=110,ID_SUBTITLE=111,ID_L_DEVICE=112,ID_L_IMAGE=113,ID_INFO=114,ID_VERSION=115;
+constexpr int ID_WINUSB=116,ID_MODE=117,ID_MODE_LABEL=118;
 constexpr UINT MSG_PROGRESS=WM_APP+11,MSG_DONE=WM_APP+12;
 constexpr COLORREF BG=RGB(13,21,36),FG=RGB(235,243,250),MUTED=RGB(156,175,192),ACCENT=RGB(29,197,204),PANEL=RGB(24,36,56);
 struct ProgressEvent {unsigned value;std::wstring text;};
 struct DoneEvent {bool ok;std::wstring text;};
 struct App {
-    HWND hwnd{},dev{},refresh{},image{},browse{},hash{},flash{},lang{},progress{},status{},log{},title{},subtitle{},device_label{},image_label{},info{},version{};
+    HWND hwnd{},dev{},refresh{},image{},browse{},hash{},flash{},winusb{},mode{},mode_label{},lang{},progress{},status{},log{},title{},subtitle{},device_label{},image_label{},info{},version{};
     HFONT font{},title_font{},small_font{};
     HBRUSH background{},panel{};
     std::vector<Drive> drives;
@@ -31,7 +33,7 @@ struct App {
     ImageInfo image_info;
     std::thread worker;
     std::atomic_bool cancel{false};
-    bool busy=false,close_after=false,english=false;
+    bool busy=false,close_after=false,english=false,external_process=false;
     ~App(){cancel=true;if(worker.joinable())worker.join();if(font)DeleteObject(font);if(title_font)DeleteObject(title_font);if(small_font)DeleteObject(small_font);if(background)DeleteObject(background);if(panel)DeleteObject(panel);}
 };
 std::wstring tr(const App& a,const wchar_t* hr,const wchar_t* en){return a.english?en:hr;}
@@ -63,32 +65,41 @@ void layout(App& a,int w,int h){
     MoveWindow(a.image_label,margin,217,full,23,TRUE);
     MoveWindow(a.image,margin,244,full-button-gap,35,TRUE);
     MoveWindow(a.browse,right-button,244,button,35,TRUE);
-    MoveWindow(a.hash,margin,308,170,41,TRUE);
-    MoveWindow(a.flash,right-202,305,202,47,TRUE);
-    MoveWindow(a.info,margin,367,full,40,TRUE);
-    MoveWindow(a.progress,margin,414,full,17,TRUE);
-    MoveWindow(a.status,margin,439,full,27,TRUE);
-    MoveWindow(a.log,margin,477,full,std::max(65,h-500),TRUE);
+    MoveWindow(a.hash,margin,303,170,41,TRUE);
+    MoveWindow(a.flash,right-202,300,202,46,TRUE);
+    MoveWindow(a.mode_label,margin,354,full,22,TRUE);
+    MoveWindow(a.mode,margin,380,std::max(150,full-214),230,TRUE);
+    MoveWindow(a.winusb,right-202,378,202,42,TRUE);
+    MoveWindow(a.info,margin,433,full,40,TRUE);
+    MoveWindow(a.progress,margin,478,full,17,TRUE);
+    MoveWindow(a.status,margin,501,full,27,TRUE);
+    MoveWindow(a.log,margin,537,full,std::max(60,h-551),TRUE);
 }
 void update_buttons(App& a){
     EnableWindow(a.refresh,!a.busy);EnableWindow(a.dev,!a.busy);EnableWindow(a.browse,!a.busy);
     EnableWindow(a.hash,!a.busy && a.image_info.error.empty() && !a.image_path.empty());
-    EnableWindow(a.flash,!a.busy && a.image_info.error.empty() && !a.image_path.empty() && !a.drives.empty() && (!a.image_info.is_iso_extension || a.image_info.hybrid_writable));
-    settext(a.flash,tr(a,a.busy?L"ZAUSTAVI":L"ZAPIŠI USB",a.busy?L"CANCEL":L"WRITE USB"));
+    bool ready=!a.image_path.empty() && a.image_info.error.empty() && !a.drives.empty();
+    EnableWindow(a.flash,(a.busy && !a.external_process) || (!a.busy && ready && (!a.image_info.is_iso_extension || a.image_info.hybrid_writable)));
+    settext(a.flash,tr(a,a.busy?(a.external_process?L"PRIČEKAJ":L"ZAUSTAVI"):L"ZAPIŠI USB",
+                           a.busy?(a.external_process?L"PLEASE WAIT":L"CANCEL"):L"WRITE USB"));
+    EnableWindow(a.winusb,!a.busy && ready && a.image_info.is_iso_extension);
+    EnableWindow(a.mode,!a.busy);
     EnableWindow(a.lang,!a.busy);
 }
 void translate(App& a){
     settext(a.title,L"BOOTRIVA");
     settext(a.subtitle,tr(a,L"Pokreni sustav. Sigurno i jednostavno.",L"Boot made simple. Safety built in."));
-    settext(a.version,L"v0.2.0  |  BRENDIGO");
+    settext(a.version,L"v0.2.1  |  BRENDIGO");
     settext(a.lang,a.english?L"HR  /  EN ✓":L"HR ✓  /  EN");
     settext(a.device_label,tr(a,L"01   ODABERI USB UREĐAJ",L"01   SELECT USB DEVICE"));
     settext(a.image_label,tr(a,L"02   ODABERI ISO / IMG / BIN DATOTEKU",L"02   SELECT ISO / IMG / BIN IMAGE"));
     settext(a.refresh,tr(a,L"Osvježi",L"Refresh"));
     settext(a.browse,tr(a,L"Odaberi...",L"Browse..."));
     settext(a.hash,L"SHA-256");
-    settext(a.info,tr(a,L"SIGURNOST   |   Samo uklonjivi USB diskovi. ISO mora biti hibridni/raw. Svi podaci na USB-u bit će izbrisani.",
-                          L"SAFETY   |   Removable USB only. ISO must be hybrid/raw. All data on the USB will be erased."));
+    settext(a.mode_label,tr(a,L"03   WINDOWS 10/11 INSTALACIJSKI USB",L"03   WINDOWS 10/11 INSTALLATION USB"));
+    settext(a.winusb,tr(a,L"KREIRAJ WINDOWS USB",L"CREATE WINDOWS USB"));
+    settext(a.info,tr(a,L"SIGURNOST  |  Uređaj se briše tek nakon potvrde BRISI. Provjeri broj i veličinu USB diska.",
+                          L"SAFETY  |  Erasure requires typed confirmation. Verify the target USB disk number and capacity."));
     update_buttons(a);
 }
 void refresh_drives(App& a){
@@ -121,8 +132,8 @@ void choose_image(App& a){
         std::wstring size(bytes.begin(),bytes.end());
         status(a,L"Image: "+size+(a.image_info.hybrid_writable?L"  |  MBR/GPT":L"  |  raw/optical"));
         if(a.image_info.is_iso_extension && !a.image_info.hybrid_writable)
-            status(a,tr(a,L"Ovaj ISO nije hibridan i trenutno se ne može zapisati.",
-                           L"This optical-only ISO cannot be written in this release."));
+            status(a,tr(a,L"Optički ISO: za Windows 10/11 koristi KREIRAJ WINDOWS USB. Ostali ISO sustavi još nisu podržani.",
+                           L"Optical ISO: use CREATE WINDOWS USB for Windows 10/11. Other ISO formats are not yet supported."));
     }
     update_buttons(a);
 }
@@ -197,9 +208,103 @@ void launch(App& a,bool do_flash){
         if(!PostMessageW(hwnd,MSG_DONE,0,reinterpret_cast<LPARAM>(done)))delete done;
     });
 }
+
+std::wstring ps_quote(const std::wstring& value){
+    std::wstring quoted=L"'";
+    for(wchar_t c:value){if(c==L'\'')quoted+=L"''";else quoted.push_back(c);}
+    return quoted+L"'";
+}
+// PowerShell -EncodedCommand accepts Base64 of UTF-16LE. Embedding the assistant
+// avoids unsigned sidecar scripts and a privileged temporary-file race.
+std::string encoded_command(const std::wstring& command){
+    constexpr char alphabet[]="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const auto* b=reinterpret_cast<const unsigned char*>(command.data());
+    const std::size_t len=command.size()*sizeof(wchar_t);
+    std::string result;result.reserve(4*((len+2)/3));
+    for(std::size_t i=0;i<len;i+=3){
+        const unsigned a=b[i],v=i+1<len?b[i+1]:0,c=i+2<len?b[i+2]:0;
+        result.push_back(alphabet[a>>2]);
+        result.push_back(alphabet[((a&3)<<4)|(v>>4)]);
+        result.push_back(i+1<len?alphabet[((v&15)<<2)|(c>>6)]:'=');
+        result.push_back(i+2<len?alphabet[c&63]:'=');
+    }
+    return result;
+}
+void launch_windows_installer(App& a){
+    if(a.busy || a.image_path.empty() || !a.image_info.error.empty() || !a.image_info.is_iso_extension)
+        return;
+    int index=static_cast<int>(SendMessageW(a.dev,CB_GETCURSEL,0,0));
+    if(index<0 || static_cast<std::size_t>(index)>=a.drives.size()){
+        status(a,tr(a,L"Odaberi USB uređaj.",L"Select a USB device."));return;
+    }
+    Drive selected=a.drives[static_cast<std::size_t>(index)];
+    bool unknown=false;
+    bool same=bootriva::win::source_on_disk(a.image_path,selected.disk_number,unknown);
+    if(unknown || same){
+        status(a,L"Cannot safely verify where the ISO file is stored. Aborting.");return;
+    }
+    if(selected.capacity<8ULL*1024ULL*1024ULL*1024ULL){
+        status(a,L"Windows installation requires an 8 GiB or larger USB disk.");return;
+    }
+    if(!confirm_write(a))return;
+    HRSRC resource=FindResourceW(GetModuleHandleW(nullptr),MAKEINTRESOURCEW(201),RT_RCDATA);
+    if(!resource){status(a,L"Embedded Windows ISO assistant is missing.");return;}
+    HGLOBAL loaded=LoadResource(GetModuleHandleW(nullptr),resource);
+    DWORD size=SizeofResource(GetModuleHandleW(nullptr),resource);
+    const char* bytes=loaded?static_cast<const char*>(LockResource(loaded)):nullptr;
+    if(!bytes || !size){status(a,L"Windows ISO assistant could not be loaded.");return;}
+    int chars=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,bytes,static_cast<int>(size),nullptr,0);
+    if(chars<=0){status(a,L"Windows ISO assistant has invalid encoding.");return;}
+    std::wstring script(static_cast<std::size_t>(chars),L'\0');
+    if(MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,bytes,static_cast<int>(size),script.data(),chars)!=chars){
+        status(a,L"Could not decode embedded Windows ISO assistant.");return;
+    }
+    int modeIndex=static_cast<int>(SendMessageW(a.mode,CB_GETCURSEL,0,0));
+    std::wstring firmware=modeIndex==0?L"UEFI":L"BIOS";
+    std::wstring filesystem=modeIndex==2?L"NTFS":L"FAT32";
+    // The ISO is untrusted. Treat its path as literal PowerShell data, not code.
+    std::wstring wrapper=L"$ErrorActionPreference='Stop'\ntry {\n& ([ScriptBlock]::Create(@'\n"+
+        script+L"\n'@)) -IsoPath "+ps_quote(a.image_path)+L" -DiskNumber "+
+        std::to_wstring(selected.disk_number)+L" -Firmware "+ps_quote(firmware)+
+        L" -Filesystem "+ps_quote(filesystem)+L" -Execute -ConfirmErase ERASE\n"+
+        L"} catch { Write-Host $_ -ForegroundColor Red; exit 1 }\n";
+    std::string encoded=encoded_command(wrapper);
+    if(encoded.size()>26000){status(a,L"Embedded assistant exceeds safe Windows command-line limit.");return;}
+    wchar_t systemDir[MAX_PATH]{};
+    if(!GetSystemDirectoryW(systemDir,MAX_PATH)){status(a,L"Windows system directory not found.");return;}
+    std::wstring executable=std::wstring(systemDir)+L"\\WindowsPowerShell\\v1.0\\powershell.exe";
+    if(GetFileAttributesW(executable.c_str())==INVALID_FILE_ATTRIBUTES){
+        status(a,L"Windows PowerShell 5.1 was not found.");return;
+    }
+    std::wstring args=L"\""+executable+L"\" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand "+
+        std::wstring(encoded.begin(),encoded.end());
+    std::vector<wchar_t> command(args.begin(),args.end());command.push_back(L'\0');
+    STARTUPINFOW startup{};startup.cb=sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if(!CreateProcessW(executable.c_str(),command.data(),nullptr,nullptr,FALSE,
+                       CREATE_NEW_CONSOLE,nullptr,nullptr,&startup,&process)){
+        status(a,L"Could not launch Windows ISO assistant ("+std::to_wstring(GetLastError())+L").");return;
+    }
+    CloseHandle(process.hThread);
+    a.busy=true;a.external_process=true;a.cancel=false;a.close_after=false;
+    update_buttons(a);
+    status(a,tr(a,L"Windows USB alat radi u konzoli. Ne uklanjaj USB dok rad ne završi.",
+                  L"Windows USB assistant is running in a console. Do not remove the USB drive."));
+    HWND hwnd=a.hwnd;HANDLE handle=process.hProcess;
+    a.worker=std::thread([hwnd,handle]{
+        DWORD exitCode=1;
+        DWORD wait=WaitForSingleObject(handle,INFINITE);
+        bool completed=wait==WAIT_OBJECT_0 && GetExitCodeProcess(handle,&exitCode)!=0 && exitCode==0;
+        CloseHandle(handle);
+        auto* done=new DoneEvent{completed,completed?
+            L"Windows media assistant finished; physical boot verification still required.":
+            L"Windows media assistant failed or was interrupted. Check USB contents before use."};
+        if(!PostMessageW(hwnd,MSG_DONE,0,reinterpret_cast<LPARAM>(done)))delete done;
+    });
+}
 void paint_button(DRAWITEMSTRUCT* item){
     const bool disabled=(item->itemState&ODS_DISABLED)!=0;
-    const bool primary=item->CtlID==ID_FLASH;
+    const bool primary=item->CtlID==ID_FLASH || item->CtlID==ID_WINUSB;
     COLORREF bg=disabled?RGB(58,69,81):(primary?ACCENT:PANEL);
     COLORREF fg=disabled?MUTED:(primary?RGB(8,29,36):FG);
     HBRUSH brush=CreateSolidBrush(bg);FillRect(item->hDC,&item->rcItem,brush);DeleteObject(brush);
@@ -226,16 +331,25 @@ bool create_controls(App& a){
     a.browse=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_BROWSE);
     a.hash=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_HASH);
     a.flash=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_FLASH);
+    a.mode_label=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_MODE_LABEL);
+    a.mode=child(a.hwnd,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_MODE);
+    a.winusb=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_WINUSB);
+    if(a.mode){
+        for(const wchar_t* value:{L"UEFI  /  FAT32",L"Legacy BIOS  /  FAT32",L"Legacy BIOS  /  NTFS"})
+            SendMessageW(a.mode,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(value));
+        SendMessageW(a.mode,CB_SETCURSEL,0,0);
+    }
     a.info=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_INFO);
     a.progress=child(a.hwnd,PROGRESS_CLASSW,L"",PBS_SMOOTH,ID_PROGRESS);
     a.status=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_STATUS);
     a.log=child(a.hwnd,L"EDIT",L"",ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_BORDER,ID_LOG);
     // Win32 CreateWindowEx can fail. Check every required child before dereferencing it.
     for(HWND h:{a.title,a.subtitle,a.version,a.lang,a.device_label,a.dev,a.refresh,
-                a.image_label,a.image,a.browse,a.hash,a.flash,a.info,a.progress,a.status,a.log}){
+                a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,
+                a.info,a.progress,a.status,a.log}){
         if(!h)return false;
     }
-    for(HWND h:{a.subtitle,a.version,a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,a.flash,a.info,a.status,a.log,a.lang})font(h,a.font);
+    for(HWND h:{a.subtitle,a.version,a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,a.info,a.status,a.log,a.lang})font(h,a.font);
     font(a.title,a.title_font);font(a.version,a.small_font);font(a.info,a.small_font);font(a.log,a.small_font);
     translate(a);
     RECT r;GetClientRect(a.hwnd,&r);layout(a,r.right-r.left,r.bottom-r.top);
@@ -269,7 +383,7 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         return 0;
     }
     case WM_GETMINMAXINFO:{
-        auto* m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={720,610};return 0;
+        auto* m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={760,700};return 0;
     }
     case WM_SIZE:layout(a,LOWORD(l),HIWORD(l));return 0;
     case WM_COMMAND:
@@ -278,6 +392,7 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         case ID_BROWSE:if(!a.busy)choose_image(a);break;
         case ID_LANG:if(!a.busy){a.english=!a.english;translate(a);}break;
         case ID_HASH:if(!a.busy)launch(a,false);break;
+        case ID_WINUSB:if(!a.busy)launch_windows_installer(a);break;
         case ID_FLASH:if(a.busy){a.cancel=true;status(a,tr(a,L"Zatraženo zaustavljanje...",L"Cancellation requested..."));}
                       else launch(a,true);break;
         default:break;
@@ -292,7 +407,7 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     case MSG_DONE:{
         std::unique_ptr<DoneEvent> evt(reinterpret_cast<DoneEvent*>(l));
         if(a.worker.joinable())a.worker.join();
-        a.busy=false;update_buttons(a);
+        a.busy=false;a.external_process=false;update_buttons(a);
         status(a,(evt->ok?L"OK  |  ":L"ERROR  |  ")+evt->text);
         if(a.close_after)DestroyWindow(hwnd);
         return 0;
@@ -316,7 +431,17 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         EndPaint(hwnd,&ps);return 0;
     }
     case WM_CLOSE:
-        if(a.busy){a.close_after=true;a.cancel=true;status(a,tr(a,L"Zaustavljanje operacije prije zatvaranja...",L"Cancelling operation before closing..."));return 0;}
+        if(a.busy){
+            a.close_after=true;
+            if(a.external_process)
+                status(a,tr(a,L"Windows alat još radi. Prozor se zatvara po završetku; ne uklanjaj USB.",
+                              L"Windows assistant is running. Window will close when it finishes; do not unplug USB."));
+            else {
+                a.cancel=true;
+                status(a,tr(a,L"Zaustavljanje operacije prije zatvaranja...",L"Cancelling operation before closing..."));
+            }
+            return 0;
+        }
         DestroyWindow(hwnd);return 0;
     case WM_DESTROY:PostQuitMessage(0);return 0;
     }
@@ -334,13 +459,13 @@ int run_app(HINSTANCE instance,int show,bool smoke){
     if(!RegisterClassExW(&klass))return 1;
     App app;
     app.hwnd=CreateWindowExW(0,klass.lpszClassName,L"BOOTRIVA — USB Creator",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
-                             CW_USEDEFAULT,CW_USEDEFAULT,860,660,nullptr,nullptr,instance,&app);
+                             CW_USEDEFAULT,CW_USEDEFAULT,880,750,nullptr,nullptr,instance,&app);
     if(!app.hwnd)return 1;
     ShowWindow(app.hwnd,show);UpdateWindow(app.hwnd);
     if(smoke){
         // Test the actual Win32 initialization path, not a mock UI.
         constexpr int required[]={ID_TITLE,ID_SUBTITLE,ID_DEV,ID_REFRESH,ID_IMAGE,
-            ID_BROWSE,ID_HASH,ID_FLASH,ID_LANG,ID_PROGRESS,ID_STATUS,ID_LOG};
+            ID_BROWSE,ID_HASH,ID_FLASH,ID_MODE,ID_WINUSB,ID_LANG,ID_PROGRESS,ID_STATUS,ID_LOG};
         bool valid=true;
         for(int id:required){
             HWND control=GetDlgItem(app.hwnd,id);

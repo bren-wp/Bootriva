@@ -7,7 +7,7 @@
 - [x] Separate experimental Windows ISO -> USB assistant with read-only preflight, FAT32, NTFS legacy BIOS mode, UEFI boot files, DISM large-WIM splitting
 - [x] Windows build/test workflow with mandatory portable+setup artifact validation
 - [ ] Test native app and USB wizard on disposable Windows hardware
-- [ ] Integrate the guided Windows ISO installation path in native UI
+- [x] Integrate experimental guided Windows ISO assistant into native GUI via embedded resource (hardware validation pending)
 - [ ] Full Windows installer compatibility matrix including secure boot and USB vendor variations
 - [ ] Genuine Windows screenshot capture, image inspection and README gallery
 

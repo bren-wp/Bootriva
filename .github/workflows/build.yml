@@ -30,6 +30,15 @@ jobs:
         run: cmake --build build --config Release --parallel 2
       - name: Unit tests
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Check embedded assistant PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $issues = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'tools/create-windows-usb.ps1').Path,
+            [ref]$tokens, [ref]$issues)
+          if ($issues.Count) { $issues | Out-String | Write-Host; throw 'PowerShell helper parse errors' }
       - name: Package portable + NSIS setup
         shell: pwsh
         run: |
@@ -59,14 +68,42 @@ jobs:
             dist/BOOTRIVA-Setup.exe
             dist/SHA256SUMS.txt
           if-no-files-found: error
-      - name: Release only on version tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        shell: pwsh
+  publish-preview:
+    name: Publish tested Portable and Setup
+    needs: [linux-core, windows-packaging]
+    # This preview version is released exactly once on merge to main.
+    # Future release versions should update preview_tag before merging.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PREVIEW_TAG: v0.2.1-preview.1
+    steps:
+      - name: Download verified Windows binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: BOOTRIVA-Windows-x64-unsigned
+          path: release
+      - name: Check artifacts and publish GitHub prerelease
+        shell: bash
         run: |
-          # Failed test/build/packaging steps prevent reaching this point.
-          gh release create "${{ github.ref_name }}" `
-            'dist/BOOTRIVA-Portable.exe' 'dist/BOOTRIVA-Setup.exe' 'dist/SHA256SUMS.txt' `
-            --title "BOOTRIVA ${{ github.ref_name }}" --generate-notes --prerelease
+          set -euo pipefail
+          test -s release/BOOTRIVA-Portable.exe
+          test -s release/BOOTRIVA-Setup.exe
+          test -s release/SHA256SUMS.txt
+          (cd release && sha256sum --check SHA256SUMS.txt)
+          if gh release view "$PREVIEW_TAG" >/dev/null 2>&1; then
+            echo "Prerelease $PREVIEW_TAG already exists; leaving it unchanged."
+          else
+            gh release create "$PREVIEW_TAG" \
+              release/BOOTRIVA-Portable.exe \
+              release/BOOTRIVA-Setup.exe \
+              release/SHA256SUMS.txt \
+              --target "${{ github.sha }}" \
+              --title "BOOTRIVA $PREVIEW_TAG · Windows ISO GUI preview" \
+              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Adds Windows 10/11 ISO assistant in the GUI with UEFI/FAT32 and BIOS/FAT32/NTFS modes. Real USB hardware validation and genuine screenshots remain pending." \
+              --prerelease
+          fi
