@@ -1,0 +1,107 @@
+name: BOOTRIVA • One-time source import and validation
+on:
+  push:
+    branches:
+      - feature/bootriva-initial-source-and-windows-media
+permissions:
+  contents: write
+jobs:
+  import-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Expand verified source archive into real repository files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f bootstrap/source.tar.xz
+          tar -xJf bootstrap/source.tar.xz -C .
+          test -f CMakeLists.txt
+          test -f src/win/main.cpp
+          test -f src/win/usb_win.cpp
+          test -f tools/create-windows-usb.ps1
+          test -f .github/workflows/build.yml
+          rm -rf bootstrap
+          rm -f .github/workflows/import.yml
+          git add -A
+          git -c user.name='BOOTRIVA CI' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat: import BOOTRIVA v0.2.0 complete source and Windows USB assistant'
+          git push origin HEAD:feature/bootriva-initial-source-and-windows-media
+  linux-core:
+    needs: import-source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/bootriva-initial-source-and-windows-media
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --parallel 2
+      - run: ctest --test-dir build --output-on-failure
+  windows-build:
+    needs: import-source
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/bootriva-initial-source-and-windows-media
+      - name: Configure and build
+        shell: pwsh
+        run: |
+          cmake -S . -B build -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
+          cmake --build build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Windows compile failed' }
+          ctest --test-dir build -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Windows core tests failed' }
+      - name: Prepare mandatory portable and setup
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item 'build/Release/Bootriva.exe' 'dist/BOOTRIVA-Portable.exe'
+          choco install nsis --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          $nsis = Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe'
+          if (-not (Test-Path $nsis)) { throw 'NSIS missing' }
+          $app = (Resolve-Path 'build/Release/Bootriva.exe').Path
+          $dest = (Resolve-Path 'dist').Path
+          & $nsis "/DAPP_EXE=$app" "/DOUT_DIR=$dest" 'packaging/bootriva.nsi'
+          if ($LASTEXITCODE -ne 0) { throw 'Setup build failed' }
+          foreach ($name in @('BOOTRIVA-Portable.exe','BOOTRIVA-Setup.exe')) {
+            $path = Join-Path 'dist' $name
+            if (-not (Test-Path $path)) { throw "Required output missing: $name" }
+            if ((Get-Item $path).Length -lt 10240) { throw "Invalid output size: $name" }
+            $sha = (Get-FileHash $path -Algorithm SHA256).Hash
+            "$sha  $name" | Add-Content -Encoding ascii 'dist/SHA256SUMS.txt'
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BOOTRIVA-Windows-x64
+          path: |
+            dist/BOOTRIVA-Portable.exe
+            dist/BOOTRIVA-Setup.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+  publish-preview:
+    needs: [linux-core, windows-build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: BOOTRIVA-Windows-x64
+          path: release
+      - name: Verify both binaries and create unsigned prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s release/BOOTRIVA-Portable.exe
+          test -s release/BOOTRIVA-Setup.exe
+          test -s release/SHA256SUMS.txt
+          gh release create v0.2.0-preview.1 release/BOOTRIVA-Portable.exe release/BOOTRIVA-Setup.exe release/SHA256SUMS.txt \
+            --target feature/bootriva-initial-source-and-windows-media \
+            --title 'BOOTRIVA v0.2.0 preview · unsigned experimental build' \
+            --notes 'Experimental preview. Not signed and not USB hardware-certified. Back up all USB data. Windows ISO creation is currently a separate PowerShell utility.' \
+            --prerelease
