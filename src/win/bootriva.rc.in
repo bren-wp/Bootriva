@@ -1,9 +1,10 @@
 #include <windows.h>
 101 ICON "@CMAKE_SOURCE_DIR@/packaging/bootriva.ico"
+201 RCDATA "@CMAKE_SOURCE_DIR@/tools/create-windows-usb.ps1"
 1 RT_MANIFEST "@CMAKE_SOURCE_DIR@/packaging/app.manifest"
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 0,2,0,0
- PRODUCTVERSION 0,2,0,0
+ FILEVERSION 0,2,1,0
+ PRODUCTVERSION 0,2,1,0
  FILEFLAGSMASK 0x3fL
  FILEFLAGS 0
  FILEOS 0x40004L
@@ -16,12 +17,12 @@ BEGIN
   BEGIN
    VALUE "CompanyName", "BRENDIGO"
    VALUE "FileDescription", "BOOTRIVA - USB Creator"
-   VALUE "FileVersion", "0.2.0"
+   VALUE "FileVersion", "0.2.1"
    VALUE "InternalName", "Bootriva"
    VALUE "LegalCopyright", "Copyright (C) 2026 BRENDIGO"
    VALUE "OriginalFilename", "Bootriva.exe"
    VALUE "ProductName", "BOOTRIVA"
-   VALUE "ProductVersion", "0.2.0"
+   VALUE "ProductVersion", "0.2.1"
   END
  END
  BLOCK "VarFileInfo"

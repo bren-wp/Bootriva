@@ -5,7 +5,7 @@ Unicode true
 !ifndef OUT_DIR
   !error "Specify /DOUT_DIR=output-folder"
 !endif
-Name "BOOTRIVA 0.2.0"
+Name "BOOTRIVA 0.2.1"
 OutFile "${OUT_DIR}\BOOTRIVA-Setup.exe"
 InstallDir "$PROGRAMFILES64\BOOTRIVA"
 RequestExecutionLevel admin
@@ -22,10 +22,10 @@ Section "Install"
   CreateDirectory "$SMPROGRAMS\BOOTRIVA"
   CreateShortcut "$SMPROGRAMS\BOOTRIVA\BOOTRIVA.lnk" "$INSTDIR\Bootriva.exe"
   CreateShortcut "$DESKTOP\BOOTRIVA.lnk" "$INSTDIR\Bootriva.exe"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\BOOTRIVA" "DisplayName" "BOOTRIVA 0.2.0"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\BOOTRIVA" "DisplayName" "BOOTRIVA 0.2.1"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\BOOTRIVA" "UninstallString" '"$INSTDIR\Uninstall.exe"'
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\BOOTRIVA" "Publisher" "BRENDIGO"
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\BOOTRIVA" "DisplayVersion" "0.2.0"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\BOOTRIVA" "DisplayVersion" "0.2.1"
 SectionEnd
 Section "Uninstall"
   Delete "$INSTDIR\Bootriva.exe"

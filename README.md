@@ -29,8 +29,8 @@ BOOTRIVA pairs a focused native Windows interface with a deliberately defensive 
 | Inspect ISO9660, MBR and GPT image headers | Implemented and core-tested |
 | Write raw IMG/BIN or pre-hybridized ISO | Implemented — real USB tests pending |
 | Byte-for-byte read-back and SHA-256 checksum | Implemented — Windows tests pending |
-| Create Windows 10/11 installation USB with FAT32 | Experimental **PowerShell assistant**, not yet in GUI |
-| GPT+UEFI and MBR+BIOS modes | Experimental Windows media assistant |
+| Create Windows 10/11 installation USB with FAT32 | Experimental wizard **integrated in the GUI** using the embedded assistant; hardware testing pending |
+| GPT+UEFI and MBR+BIOS modes | GUI selection with experimental Windows media assistant |
 | NTFS on supported legacy BIOS install media | Experimental Windows media assistant |
 | Automatic large install.wim splitting with DISM | Experimental Windows media assistant |
 | Multiboot and Windows To Go | Planned |
@@ -41,12 +41,20 @@ Every version-tagged build is configured to publish both **`BOOTRIVA-Portable.ex
 
 **Portable:** no installation required; run it as administrator. **Setup:** traditional installation and Start menu shortcuts.
 
+## 🪟 Windows 10 / 11 installation USB — experimental
+
+Choose a **Windows 10/11 ISO**, connect a disposable USB device of at least 8 GiB, and select the installer mode in the new Windows USB section: **UEFI / FAT32**, **Legacy BIOS / FAT32**, or **Legacy BIOS / NTFS**. Then select **CREATE WINDOWS USB**. BOOTRIVA requires typed erasure confirmation before launching its embedded Windows PowerShell assistant with an independent device check.
+
+The helper is embedded as a resource directly into the executable. **Both Portable and Setup have the same functionality; no sidecar script is necessary.** This path is distinct from raw image flashing and relies on Windows Storage cmdlets plus DISM splitting when install.wim exceeds the FAT32 file limit.
+
+⚠️ This functionality is *experimental*, has not been qualified on physical Windows installation devices, and is not compatible with ordinary Linux optical ISO files. Check the console and verify the USB boots on representative hardware before deployment.
+
 ## 🛠️ Startup UI fix
 The Windows window-creation regression reported with `v0.2.0-preview.1`
 is addressed in the current development branch. Win32 controls are now
 initialized with the parent window handle during `WM_NCCREATE`, the background
 does not overpaint child controls, and CI runs an explicit GUI-control smoke test.
-**The fix is pending validation against a real Windows desktop screenshot.**
+**Native automated Windows checks passed; a real Windows desktop screenshot and hardware validation are still pending.**
 
 ## 🪟 Interface gallery
 
