@@ -37,7 +37,8 @@ struct InUse {
         if(!task)return;
         bool expected=false;
         acquired=task->running.compare_exchange_strong(expected,true);
-        if(acquired)task->cancel.store(false);
+        // New tasks start uncancelled. Never reset a cancellation requested
+        // while the UI worker is being scheduled.
     }
     ~InUse(){if(acquired)task->running.store(false);}
 };
