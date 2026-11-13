@@ -56,6 +56,28 @@ ISO binary files are **not bundled** with BOOTRIVA: they are multi-gigabyte,
 may need edition selection and licensing, and direct links can expire. The
 server entry is a download reference, not a claim of certified server USB support.
 
+### Screenshot-driven UI overhaul (v0.2.4)
+
+The Windows 11 Fluent-inspired **light** interface replaces the visually inconsistent
+dark v0.2.3 layout. It stays a native C++/Win32 desktop app.
+
+- **Sticky header**: the BOOTRIVA title, BRENDIGO version and language switch
+  remain visible while the content scrolls inside a dedicated clipped viewport.
+- **Compact cards**: smaller vertical padding, consistent field heights and
+  readable spacing. Narrow windows stack labels, choices and buttons cleanly.
+- **Native controls**: OS-default Windows light comboboxes and edit fields now
+  belong to a matching white/silver palette instead of clashing with a dark card.
+- **Buttons and status**: rounded primary/secondary styles, abbreviated text that
+  fits narrow controls, a slim branded progress bar and legible disabled states.
+- **No full-screen startup**: opens in a centered normal window, not maximized.
+- **Regression tests**: assert required controls, internal scrolling, a persistent
+  visible header and the activity log at the end of the page.
+
+The layout changes were driven by a real user screenshot showing clipped headings,
+overlapping Windows USB controls, inconsistent control colors and poor spacing.
+**Compiled GUI smoke tests are not a substitute for a real screenshot or hardware
+review**; further refinement at 125%, 150%, 200% and 400% is ongoing.
+
 ### Compact native Windows 11-inspired interface (v0.2.3)
 
 BOOTRIVA remains a **native C++20 Win32 executable** (no web runtime,

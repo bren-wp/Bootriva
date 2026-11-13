@@ -38,3 +38,13 @@
 - [x] Native Win32 rounded cards/buttons, Windows 11 DWM dark caption and rounded-corner preference where supported.
 - [x] Refresh Segoe UI control fonts on per-monitor DPI changes; extend Win32 GUI smoke tests for narrow viewport scrolling and initial window size.
 - [ ] Confirm on hardware at 100%, 125%, 150%, 200% and 400% zoom, capture only genuine screenshots, test keyboard/AT navigation.
+
+## v0.2.4 — Screenshot-based layout corrections
+
+- [x] Separate scrollable page HWND from fixed header so scrolling cannot hide branding/navigation or place card content over it.
+- [x] Align Win32 native inputs with a cohesive Windows 11 inspired light palette.
+- [x] Reduce oversized cards and controls, ensure narrow action buttons have readable labels.
+- [x] Replace bright default OS progress track with a compact custom native GDI control.
+- [x] Add smoke regression for header position after scrolling to end of the page.
+- [ ] Check screenshot before/after on a physical Windows desktop at multiple zoom factors and inspect contrast/accessibility.
+- [ ] Review keyboard accessibility and native UI Automation semantics of custom controls.
