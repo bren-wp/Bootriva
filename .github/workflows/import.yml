@@ -12,22 +12,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Expand verified source archive into real repository files
+      - name: Expand complete source into repository
         shell: bash
         run: |
           set -euo pipefail
-          test -f bootstrap/source.tar.xz
-          tar -xJf bootstrap/source.tar.xz -C .
-          test -f CMakeLists.txt
-          test -f src/win/main.cpp
-          test -f src/win/usb_win.cpp
-          test -f tools/create-windows-usb.ps1
-          test -f .github/workflows/build.yml
-          rm -rf bootstrap
-          rm -f .github/workflows/import.yml
-          git add -A
-          git -c user.name='BOOTRIVA CI' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat: import BOOTRIVA v0.2.0 complete source and Windows USB assistant'
-          git push origin HEAD:feature/bootriva-initial-source-and-windows-media
+          if [ -f bootstrap/source.tar.xz ]; then
+            tar -xJf bootstrap/source.tar.xz -C .
+            for file in CMakeLists.txt README.md src/win/main.cpp src/win/usb_win.cpp tools/create-windows-usb.ps1; do
+              test -s "$file"
+            done
+            # The default GITHUB_TOKEN is restricted from writing workflow files.
+            # Preserve this import workflow and add build.yml separately via a privileged GitHub connector.
+            rm -f .github/workflows/build.yml
+            rm -rf bootstrap
+            git add -A
+            if ! git diff --cached --quiet; then
+              git -c user.name='BOOTRIVA CI' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat: import BOOTRIVA v0.2.0 full source and Windows media assistant'
+              git push origin HEAD:feature/bootriva-initial-source-and-windows-media
+            fi
+          fi
   linux-core:
     needs: import-source
     runs-on: ubuntu-latest
@@ -45,7 +48,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/bootriva-initial-source-and-windows-media
-      - name: Configure and build
+      - name: Build and test
         shell: pwsh
         run: |
           cmake -S . -B build -A x64
@@ -54,7 +57,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows compile failed' }
           ctest --test-dir build -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'Windows core tests failed' }
-      - name: Prepare mandatory portable and setup
+      - name: Build both mandatory Windows packages
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
@@ -90,7 +93,7 @@ jobs:
         with:
           name: BOOTRIVA-Windows-x64
           path: release
-      - name: Verify both binaries and create unsigned prerelease
+      - name: Verify binaries and publish unsigned prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
