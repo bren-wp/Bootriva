@@ -56,3 +56,14 @@
 - [ ] Verify the WinUI app compiles, launches and packages on Windows CI.
 - [ ] Implement a C++/WinUI safe bridge while preserving the existing USB engine.
 - [ ] Design and validate real screenshots and accessible keyboard-navigation.
+
+## v0.2.6 — WinUI/C++ safety integration and Rufus/Ventoy research
+
+- [x] Introduce C ABI DLL with version handshake, native disk identity, cancellation and byte-by-byte verification.
+- [x] Wire WinUI controls to native USB enumeration, image inspection, SHA-256, guarded raw writing with manual BRISI confirmation and progress.
+- [x] Add read-only Ventoy-compatible ISO folder scanner without bootloader/partition modifications.
+- [x] Build/test native bridge and package WinUI preview EXE with mandatory DLL in a ZIP.
+- [ ] Independent native USB hardware write/read-back, UEFI/BIOS installer boot and hot-unplug matrix.
+- [ ] WinUI Windows 10/11 installer USB creator, bootloader and filesystems with full identity rechecks.
+- [ ] Build audited multiboot engine with explicit attribution, license review, Secure Boot and firmware validation.
+- [ ] Compare against Rufus/Ventoy feature tests, including GPT/MBR, Windows To Go, Linux persistence and bad-block checks.

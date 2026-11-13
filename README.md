@@ -16,6 +16,31 @@
 
 ---
 
+## WinUI 3 + hardened native C++ engine (v0.2.6)
+
+The genuine WinUI 3 application now uses a versioned native C++ bridge for USB
+discovery, image analysis, SHA-256, cancellation, confirmed raw disk-image
+writes and **full byte-for-byte USB read-back verification**. Both the GUI and
+the C++ engine independently validate physical disk identity before writing.
+
+**RAW flashing is experimental and destructive**: it requires Administrator
+privileges and a typed `BRISI` confirmation, and is restricted to eligible
+removable USB devices. Non-hybrid optical ISO files are *not* raw flashed.
+Windows Setup media creation remains an independent, experimental legacy UI
+workflow until safely migrated.
+
+A **Ventoy-compatible ISO library inspector** can read a chosen folder of ISO,
+WIM, IMG, VHD/VHDX and EFI files. It does not alter partitions, install Ventoy,
+or make the selected folder bootable. Its bootability is not guaranteed.
+
+**Rufus and Ventoy are reference projects, not source-code dependencies.**
+Their GPLv3 components are not incorporated into BOOTRIVA's MIT core.
+Read [upstream comparison and licensing](docs/RUFUS-VENTOY-RESEARCH.md).
+
+The WinUI bundle is now a ZIP because the mandatory native bridge DLL must
+accompany the modern self-contained EXE. This prevents distributing a modern
+EXE that cannot access the USB safety engine.
+
 ## Real Windows 11 interface — WinUI 3 preview (v0.2.5)
 
 BOOTRIVA is transitioning to **Microsoft WinUI 3 and the Windows App SDK**:
@@ -25,15 +50,14 @@ native scrolling, clear status, no Electron, no HTML and no WebView.
 **Three GitHub release binaries during transition:**
 - **BOOTRIVA-Portable.exe** — current **C++ USB writer**, feature-preserving classic UI.
 - **BOOTRIVA-Setup.exe** — current C++ installation package.
-- **BOOTRIVA-WinUI3-Preview.exe** — a self-contained, **read-only** native WinUI 3 UI
-  to evaluate the next-generation experience. Includes official Microsoft
-  ISO catalogue, image picker, image-header inspection, removable-drive
-  enumeration and asynchronous SHA-256. **No USB formatting or writing in the preview.**
+- **BOOTRIVA-WinUI3-Preview.zip** — self-contained native WinUI 3 EXE plus the
+  mandatory C++ safety-engine DLL. Allows guarded raw writes and full read-back
+  verification on an eligible removable USB, **not** general Windows ISO creation.
 
-WinUI 3 does **not** replace the working writer until image inspection, raw
-USB writing and verification, cancellation, ISO media preparation, complete
-device identity checks and physical USB hardware qualification are restored
-behind a hardened C++ interop bridge.
+WinUI 3 does **not** replace the classic writer as the default release yet.
+The native bridge now implements inspection, RAW write/verification and
+cancellation, but Windows installer ISO preparation, tested UEFI/BIOS boot,
+multiboot bootloader management and physical USB validation remain unfinished.
 
 [WinUI 3 migration and testing gates](docs/WINUI3-MIGRATION.md) |
 [Official Windows App SDK deployment guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/unpackage-winui-app)

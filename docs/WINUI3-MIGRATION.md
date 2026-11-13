@@ -36,3 +36,12 @@ dotnet publish ui/Bootriva.Modern/Bootriva.Modern.csproj -c Release -r win-x64 -
 Windows App SDK self-contained single-file builds extract their runtime dependencies on first launch. They are **not** zero-extraction binaries. Signing is not configured; all artifacts are unsigned previews.
 
 See Microsoft: https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/unpackage-winui-app
+
+## v0.2.6 — native C++ ABI migration
+
+- The native Win64 `bootriva_bridge.dll` is included next to the WinUI executable in a single release ZIP, with a version handshake (`0x00020006`).
+- WinUI uses the existing protected C++ USB engine for eligible physical USB disk selection, image inspection, raw IMG/hybrid ISO flashing, byte-for-byte read-back and SHA-256.
+- Requires explicit administrator elevation, no implicit USB selection and a typed `BRISI` confirmation; C++ independently checks the selected device again before writing.
+- Cancelling an in-progress raw write may leave the USB unusable until recreated; WinUI prevents closing while a native operation runs.
+- Includes a **read-only** Ventoy ISO-library inspector. Does not import GPL source or bootloaders.
+- Remaining: actual physical hardware + Windows installer + Linux ISO boot testing; real screenshot and accessibility validation; WinUI Windows Setup USB builder; safe bootloader integration.

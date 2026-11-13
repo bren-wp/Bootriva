@@ -66,3 +66,9 @@ Automated smoke: native startup controls, official ISO entries, nonmaximized ini
 - Release publication is conditioned on WinUI build and the existing C++ Windows/Linux jobs.
 - WinUI binary is **read-only** for disk operations. It does not become the primary writer until safety bridging and hardware certification.
 - Modern GUI runtime screenshot, Windows 11 high-DPI testing and accessibility checks are still required.
+
+## v0.2.6 C++/WinUI native bridge test matrix
+
+CI must compile the C ABI `bootriva_bridge.dll` and run `native_bridge_safety` using temporary image fixtures only. Checks: ABI version, invalid-path refusal, MBR inspection, SHA-256 and destructive write rejection unless a typed confirmation is provided. No physical USB writes happen in CI.
+
+WinUI publish now requires a ZIP with both the self-contained EXE and the bridge DLL; release validation checks SHA-256 for the ZIP. The classic Portable.exe and Setup.exe are still mandatory. Do **not** claim Windows 10/11 full installer USB support from WinUI, Ventoy multiboot bootloader, Windows To Go or tested Rufus parity: those remain planned.
