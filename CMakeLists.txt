@@ -31,5 +31,20 @@ if(WIN32)
     target_link_options(Bootriva PRIVATE /MANIFEST:NO)
   endif()
   set_target_properties(Bootriva PROPERTIES OUTPUT_NAME "Bootriva")
+  # This target deliberately has no embedded requireAdministrator manifest.
+  # It exercises the real window/control creation path on CI and catches the
+  # "empty window" regression without touching a USB disk.
+  add_executable(bootriva_ui_smoke src/win/main.cpp src/win/usb_win.cpp)
+  target_compile_definitions(bootriva_ui_smoke PRIVATE
+    BOOTRIVA_UI_SMOKE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_link_libraries(bootriva_ui_smoke PRIVATE
+    bootriva_core bcrypt dwmapi comctl32 comdlg32)
+  if(MSVC)
+    target_compile_options(bootriva_ui_smoke PRIVATE /W4 /permissive- /utf-8)
+    set_property(TARGET bootriva_ui_smoke PROPERTY
+      MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  endif()
+  add_test(NAME win32_gui_controls COMMAND bootriva_ui_smoke)
+  set_tests_properties(win32_gui_controls PROPERTIES TIMEOUT 45)
   install(TARGETS Bootriva RUNTIME DESTINATION .)
 endif()

@@ -23,3 +23,11 @@ restriction, identity mismatch, and image larger than media.
 - Firmware bootability, ISO extraction, performance, accessibility and DPI scaling.
 
 **Status: source development milestone, not production release.**
+
+## GUI startup regression (2026-11-13)
+
+- Report: Windows release opens to a blank dark window with only a horizontal separator.
+- Root cause: `app.hwnd` was assigned only after `CreateWindowExW` returned, but `WM_CREATE` executed synchronously before that and attempted to create child controls with a null parent HWND.
+- Correction: initialize owner HWND during `WM_NCCREATE`; fail gracefully if required controls are absent; prevent parent painting over child windows.
+- Regression: native `bootriva_ui_smoke` Windows CTest checks required visible controls and window title; no disk operation or admin elevation.
+- Evidence still needed: successfully completed Windows Actions test and real desktop screenshot after rebuilding the application.
