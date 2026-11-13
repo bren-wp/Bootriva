@@ -5,6 +5,8 @@
 #include <dwmapi.h>
 #include <shellapi.h>
 #include <iterator>
+#include <array>
+#include <utility>
 #include <atomic>
 #include <algorithm>
 #include <filesystem>
@@ -37,6 +39,8 @@ struct App {
     std::thread worker;
     std::atomic_bool cancel{false};
     bool busy=false,close_after=false,english=false,external_process=false;
+    int scroll_y=0,content_height=780;
+    std::array<std::pair<int,int>,5> card_ranges{};
     ~App(){cancel=true;if(worker.joinable())worker.join();if(font)DeleteObject(font);if(title_font)DeleteObject(title_font);if(small_font)DeleteObject(small_font);if(background)DeleteObject(background);if(panel)DeleteObject(panel);}
 };
 std::wstring tr(const App& a,const wchar_t* hr,const wchar_t* en){return a.english?en:hr;}
@@ -57,36 +61,91 @@ HWND child(HWND p,LPCWSTR type,LPCWSTR title,DWORD style,int id){
 void font(HWND h,HFONT f){SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(f),TRUE);}
 int scale(const App& a,int value){return MulDiv(value,static_cast<int>(GetDpiForWindow(a.hwnd)),96);}
 void layout(App& a,int w,int h){
-    if(!a.dev)return;
+    if(!a.dev || w<=0 || h<=0)return;
     const int dpi=static_cast<int>(GetDpiForWindow(a.hwnd));
     const int width=MulDiv(w,96,dpi),height=MulDiv(h,96,dpi);
-    const int margin=30,right=width-margin,full=width-2*margin;
-    auto place=[&](HWND c,int x,int y,int cw,int ch){
-        if(c)MoveWindow(c,scale(a,x),scale(a,y),scale(a,std::max(1,cw)),scale(a,std::max(1,ch)),TRUE);
+    const int outer=16,inner=outer+16,content=std::max(220,width-inner*2);
+    const bool narrow=content<475;
+    const int btn=162,gap=10;
+    const int inputWidth=narrow?content:content-btn-gap;
+    const int buttonX=narrow?inner:inner+inputWidth+gap;
+    auto place=[&](HWND control,int x,int y,int cw,int ch){
+        if(control)MoveWindow(control,scale(a,x),scale(a,y)-a.scroll_y,
+                              scale(a,std::max(1,cw)),scale(a,std::max(1,ch)),TRUE);
     };
-    place(a.title,margin,20,full-225,43);
-    place(a.subtitle,margin,65,full-225,24);
-    place(a.version,right-196,24,196,22);
-    place(a.lang,right-104,70,104,33);
-    place(a.catalog_label,margin,136,full,24);
-    place(a.catalog,margin,169,full-226,250);
-    place(a.catalog_open,right-212,167,212,39);
-    place(a.catalog_note,margin,211,full,21);
-    place(a.device_label,margin,249,full,24);
-    place(a.dev,margin,282,full-148,230);
-    place(a.refresh,right-135,281,135,39);
-    place(a.image_label,margin,349,full,23);
-    place(a.image,margin,386,full-149,39);
-    place(a.browse,right-135,386,135,39);
-    place(a.hash,margin,435,175,39);
-    place(a.flash,right-218,431,218,45);
-    place(a.mode_label,margin,496,full,23);
-    place(a.mode,margin,534,full-232,230);
-    place(a.winusb,right-218,531,218,44);
-    place(a.info,margin,587,full,28);
-    place(a.progress,margin,649,full,16);
-    place(a.status,margin,679,full,24);
-    place(a.log,margin,711,full,std::max(52,height-738));
+    // Header and scrollable cards are laid out in *logical* 96-DPI units.
+    // Each group grows vertically when the window is narrow, rather than
+    // allowing controls to overlap or become clipped.
+    place(a.title,inner,14,std::max(180,content-173),35);
+    place(a.subtitle,inner,49,std::max(180,content-115),24);
+    place(a.version,inner+content-160,12,160,19);
+    place(a.lang,inner+content-91,44,91,30);
+    int y=90;
+    const int catTop=y;
+    place(a.catalog_label,inner,y+12,content,22);
+    place(a.catalog,inner,y+42,inputWidth,220);
+    place(a.catalog_open,buttonX,y+(narrow?82:41),narrow?content:btn,36);
+    const int catNoteY=y+(narrow?125:85);
+    place(a.catalog_note,inner,catNoteY,content,39);
+    y=catNoteY+48;
+    a.card_ranges[0]={catTop,y};
+    y+=9;
+    const int deviceTop=y;
+    place(a.device_label,inner,y+12,content,22);
+    place(a.dev,inner,y+42,inputWidth,220);
+    place(a.refresh,buttonX,y+(narrow?82:41),narrow?content:btn,36);
+    y+=(narrow?130:91);
+    a.card_ranges[1]={deviceTop,y};
+    y+=9;
+    const int imageTop=y;
+    place(a.image_label,inner,y+12,content,22);
+    place(a.image,inner,y+42,inputWidth,36);
+    place(a.browse,buttonX,y+(narrow?82:41),narrow?content:btn,36);
+    const int actionsY=y+(narrow?132:90);
+    const int actionWidth=(content-gap)/2;
+    place(a.hash,inner,actionsY,actionWidth,37);
+    place(a.flash,inner+actionWidth+gap,actionsY,actionWidth,37);
+    y=actionsY+48;
+    a.card_ranges[2]={imageTop,y};
+    y+=9;
+    const int mediaTop=y;
+    place(a.mode_label,inner,y+12,content,22);
+    place(a.mode,inner,y+42,inputWidth,220);
+    place(a.winusb,buttonX,y+(narrow?82:41),narrow?content:btn,36);
+    y+=(narrow?130:91);
+    a.card_ranges[3]={mediaTop,y};
+    y+=9;
+    const int activityTop=y;
+    place(a.info,inner,y+12,content,43);
+    place(a.progress,inner,y+64,content,13);
+    place(a.status,inner,y+86,content,25);
+    const int logHeight=std::max(94,height-(y+132));
+    place(a.log,inner,y+119,content,logHeight);
+    y+=119+logHeight+17;
+    a.card_ranges[4]={activityTop,y};
+    a.content_height=y+14;
+    const int priorScroll=a.scroll_y;
+    const int maxScroll=std::max(0,scale(a,a.content_height)-h);
+    a.scroll_y=std::clamp(a.scroll_y,0,maxScroll);
+    // Re-run placement once if a resize shortened the scrollable document.
+    if(a.scroll_y!=priorScroll){layout(a,w,h);return;}
+    SCROLLINFO info{sizeof(info)};
+    info.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
+    info.nMin=0;
+    info.nMax=std::max(0,scale(a,a.content_height)-1);
+    info.nPage=static_cast<UINT>(h);
+    info.nPos=a.scroll_y;
+    SetScrollInfo(a.hwnd,SB_VERT,&info,TRUE);
+}
+void scroll_to(App& a,int desired){
+    RECT client{};
+    GetClientRect(a.hwnd,&client);
+    const int maxScroll=std::max(0,scale(a,a.content_height)-static_cast<int>(client.bottom-client.top));
+    int target=std::clamp(desired,0,maxScroll);
+    if(target==a.scroll_y)return;
+    a.scroll_y=target;
+    layout(a,client.right-client.left,client.bottom-client.top);
+    InvalidateRect(a.hwnd,nullptr,FALSE);
 }
 struct CatalogEntry {
     const wchar_t* title;
@@ -142,7 +201,7 @@ void update_buttons(App& a){
 void translate(App& a){
     settext(a.title,L"BOOTRIVA");
     settext(a.subtitle,tr(a,L"Pokreni sustav. Sigurno i jednostavno.",L"Boot made simple. Safety built in."));
-    settext(a.version,L"v0.2.2  |  BRENDIGO");
+    settext(a.version,L"v0.2.3  |  BRENDIGO");
     settext(a.lang,a.english?L"HR  /  EN ✓":L"HR ✓  /  EN");
     settext(a.catalog_label,tr(a,L"01   KATALOG SLUŽBENIH WINDOWS ISO",L"01   OFFICIAL WINDOWS ISO CATALOG"));
     settext(a.catalog_open,tr(a,L"OTVORI MICROSOFT",L"OPEN MICROSOFT"));
@@ -360,11 +419,19 @@ void launch_windows_installer(App& a){
 }
 void paint_button(DRAWITEMSTRUCT* item){
     const bool disabled=(item->itemState&ODS_DISABLED)!=0;
+    const bool pressed=(item->itemState&ODS_SELECTED)!=0;
     const bool primary=item->CtlID==ID_FLASH || item->CtlID==ID_WINUSB;
     const bool source=item->CtlID==ID_CATALOG_OPEN;
-    COLORREF bg=disabled?RGB(58,69,81):(primary?ACCENT:(source?RGB(27,91,115):RGB(34,51,71)));
+    COLORREF bg=disabled?RGB(55,67,81):(primary?(pressed?RGB(16,159,171):ACCENT):(source?RGB(26,86,109):RGB(37,52,72)));
     COLORREF fg=disabled?MUTED:(primary?RGB(8,29,36):FG);
-    HBRUSH brush=CreateSolidBrush(bg);FillRect(item->hDC,&item->rcItem,brush);DeleteObject(brush);
+    HBRUSH brush=CreateSolidBrush(bg);
+    HPEN pen=CreatePen(PS_SOLID,1,disabled?RGB(64,77,91):(primary?ACCENT:RGB(63,87,105)));
+    HGDIOBJ oldBrush=SelectObject(item->hDC,brush),oldPen=SelectObject(item->hDC,pen);
+    RECT button=item->rcItem;
+    InflateRect(&button,-1,-1);
+    RoundRect(item->hDC,button.left,button.top,button.right,button.bottom,12,12);
+    SelectObject(item->hDC,oldPen);SelectObject(item->hDC,oldBrush);
+    DeleteObject(pen);DeleteObject(brush);
     wchar_t title[128]{};GetWindowTextW(item->hwndItem,title,128);
     SetTextColor(item->hDC,fg);SetBkMode(item->hDC,TRANSPARENT);
     SelectObject(item->hDC,reinterpret_cast<HFONT>(SendMessageW(item->hwndItem,WM_GETFONT,0,0)));
@@ -373,9 +440,9 @@ void paint_button(DRAWITEMSTRUCT* item){
 }
 bool create_controls(App& a){
     a.background=CreateSolidBrush(BG);a.panel=CreateSolidBrush(PANEL);
-    a.font=CreateFontW(-18,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
-    a.title_font=CreateFontW(-36,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
-    a.small_font=CreateFontW(-15,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    a.font=CreateFontW(-scale(a,16),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    a.title_font=CreateFontW(-scale(a,28),0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    a.small_font=CreateFontW(-scale(a,13),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
     a.title=child(a.hwnd,L"STATIC",L"BOOTRIVA",SS_LEFT,ID_TITLE);
     a.subtitle=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_SUBTITLE);
     a.version=child(a.hwnd,L"STATIC",L"",SS_RIGHT,ID_VERSION);
@@ -416,11 +483,28 @@ bool create_controls(App& a){
         if(!h)return false;
     }
     for(HWND h:{a.subtitle,a.version,a.catalog_label,a.catalog,a.catalog_open,a.catalog_note,a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,a.info,a.status,a.log,a.lang})font(h,a.font);
-    font(a.title,a.title_font);font(a.version,a.small_font);font(a.info,a.small_font);font(a.log,a.small_font);
+    font(a.title,a.title_font);font(a.version,a.small_font);font(a.info,a.small_font);font(a.log,a.small_font);font(a.catalog_note,a.small_font);
     translate(a);
     RECT r;GetClientRect(a.hwnd,&r);layout(a,r.right-r.left,r.bottom-r.top);
     refresh_drives(a);
     return true;
+}
+void refresh_fonts(App& a){
+    HFONT previous=a.font,previousTitle=a.title_font,previousSmall=a.small_font;
+    a.font=CreateFontW(-scale(a,16),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    a.title_font=CreateFontW(-scale(a,28),0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    a.small_font=CreateFontW(-scale(a,13),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,
+        OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    for(HWND control:{a.subtitle,a.lang,a.catalog_label,a.catalog,a.catalog_open,
+            a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,
+            a.flash,a.mode_label,a.mode,a.winusb,a.status})if(control)font(control,a.font);
+    for(HWND control:{a.version,a.info,a.log,a.catalog_note})if(control)font(control,a.small_font);
+    if(a.title)font(a.title,a.title_font);
+    if(previous)DeleteObject(previous);
+    if(previousTitle)DeleteObject(previousTitle);
+    if(previousSmall)DeleteObject(previousSmall);
 }
 LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     auto* app=reinterpret_cast<App*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
@@ -440,6 +524,14 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     case WM_CREATE:{
         BOOL dark=TRUE;
         DwmSetWindowAttribute(hwnd,20,&dark,sizeof(dark));
+        // Windows 11 uses rounded corners and a seamless dark caption.
+        // Unsupported DWM attributes safely fail on older Windows versions.
+        DWORD corner=2;
+        DwmSetWindowAttribute(hwnd,33,&corner,sizeof(corner));
+        COLORREF caption=BG;
+        DwmSetWindowAttribute(hwnd,35,&caption,sizeof(caption));
+        COLORREF captionText=FG;
+        DwmSetWindowAttribute(hwnd,36,&captionText,sizeof(captionText));
         if(!create_controls(a)){
 #if !defined(BOOTRIVA_UI_SMOKE)
             MessageBoxW(hwnd,L"Could not initialize BOOTRIVA controls. Please report this error.",L"BOOTRIVA",MB_OK|MB_ICONERROR);
@@ -449,14 +541,41 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         return 0;
     }
     case WM_GETMINMAXINFO:{
-        auto* m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={scale(a,810),scale(a,850)};return 0;
+        auto* m=reinterpret_cast<MINMAXINFO*>(l);
+        m->ptMinTrackSize={scale(a,390),scale(a,450)};
+        return 0;
     }
     case WM_SIZE:layout(a,LOWORD(l),HIWORD(l));return 0;
+    case WM_VSCROLL:{
+        if(reinterpret_cast<HWND>(l))break;
+        SCROLLINFO current{sizeof(current)};
+        current.fMask=SIF_ALL;
+        GetScrollInfo(hwnd,SB_VERT,&current);
+        int next=a.scroll_y;
+        switch(LOWORD(w)){
+        case SB_LINEUP:next-=scale(a,40);break;
+        case SB_LINEDOWN:next+=scale(a,40);break;
+        case SB_PAGEUP:next-=static_cast<int>(current.nPage);break;
+        case SB_PAGEDOWN:next+=static_cast<int>(current.nPage);break;
+        case SB_THUMBTRACK:case SB_THUMBPOSITION:next=current.nTrackPos;break;
+        case SB_TOP:next=0;break;
+        case SB_BOTTOM:next=scale(a,a.content_height);break;
+        default:return 0;
+        }
+        scroll_to(a,next);
+        return 0;
+    }
+    case WM_MOUSEWHEEL:{
+        const int delta=GET_WHEEL_DELTA_WPARAM(w);
+        scroll_to(a,a.scroll_y-MulDiv(delta,scale(a,75),WHEEL_DELTA));
+        return 0;
+    }
     case WM_DPICHANGED:{
         const auto* bounds=reinterpret_cast<const RECT*>(l);
         if(bounds)SetWindowPos(hwnd,nullptr,bounds->left,bounds->top,
                                bounds->right-bounds->left,bounds->bottom-bounds->top,
                                SWP_NOZORDER|SWP_NOACTIVATE);
+        refresh_fonts(a);
         RECT client{};GetClientRect(hwnd,&client);
         layout(a,client.right,client.bottom);
         InvalidateRect(hwnd,nullptr,TRUE);
@@ -505,21 +624,37 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     case WM_ERASEBKGND:return 1; // One background paint; avoid a white startup flash.
     case WM_PAINT:{
         PAINTSTRUCT ps{};HDC dc=BeginPaint(hwnd,&ps);
-        RECT r{};GetClientRect(hwnd,&r);FillRect(dc,&r,a.background);
-        int dpi=static_cast<int>(GetDpiForWindow(hwnd));
-        auto s=[dpi](int x){return MulDiv(x,dpi,96);};
-        int logicalW=MulDiv(r.right,96,dpi),logicalH=MulDiv(r.bottom,96,dpi);
-        RECT top{0,s(112),r.right,s(114)};
-        HBRUSH line=CreateSolidBrush(RGB(27,90,110));FillRect(dc,&top,line);DeleteObject(line);
-        HPEN edge=CreatePen(PS_SOLID,std::max(1,s(1)),RGB(46,66,89));
+        RECT viewport{};GetClientRect(hwnd,&viewport);
+        HDC buffer=CreateCompatibleDC(dc);
+        HBITMAP pixels=CreateCompatibleBitmap(dc,std::max(1,static_cast<int>(viewport.right)),
+                                              std::max(1,static_cast<int>(viewport.bottom)));
+        if(!buffer || !pixels){
+            FillRect(dc,&viewport,a.background);
+            if(pixels)DeleteObject(pixels);
+            if(buffer)DeleteDC(buffer);
+            EndPaint(hwnd,&ps);
+            return 0;
+        }
+        HGDIOBJ oldBitmap=SelectObject(buffer,pixels);
+        FillRect(buffer,&viewport,a.background);
+        const int dpi=static_cast<int>(GetDpiForWindow(hwnd));
+        auto s=[dpi](int n){return MulDiv(n,dpi,96);};
+        const int logicalWidth=MulDiv(viewport.right,96,dpi);
+        HPEN border=CreatePen(PS_SOLID,std::max(1,s(1)),RGB(50,68,88));
         HBRUSH surface=CreateSolidBrush(PANEL);
-        HGDIOBJ oldPen=SelectObject(dc,edge),oldBrush=SelectObject(dc,surface);
-        const int boxes[][2]={{124,235},{242,333},{341,486},{493,627},{635,logicalH-16}};
-        for(const auto& segment:boxes)if(segment[1]>segment[0])
-            RoundRect(dc,s(17),s(segment[0]),s(logicalW-17),s(segment[1]),s(16),s(16));
-        SelectObject(dc,oldPen);SelectObject(dc,oldBrush);
-        DeleteObject(edge);DeleteObject(surface);
-        EndPaint(hwnd,&ps);return 0;
+        HGDIOBJ oldPen=SelectObject(buffer,border),oldBrush=SelectObject(buffer,surface);
+        for(const auto& card:a.card_ranges){
+            int top=s(card.first)-a.scroll_y;
+            int bottom=s(card.second)-a.scroll_y;
+            if(bottom<0 || top>viewport.bottom)continue;
+            RoundRect(buffer,s(16),top,s(std::max(20,logicalWidth-16)),bottom,s(14),s(14));
+        }
+        SelectObject(buffer,oldPen);SelectObject(buffer,oldBrush);
+        DeleteObject(border);DeleteObject(surface);
+        BitBlt(dc,0,0,viewport.right,viewport.bottom,buffer,0,0,SRCCOPY);
+        SelectObject(buffer,oldBitmap);DeleteObject(pixels);DeleteDC(buffer);
+        EndPaint(hwnd,&ps);
+        return 0;
     }
     case WM_CLOSE:
         if(a.busy){
@@ -549,10 +684,30 @@ int run_app(HINSTANCE instance,int show,bool smoke){
     klass.hCursor=LoadCursorW(nullptr,IDC_ARROW);klass.hbrBackground=nullptr;
     if(!RegisterClassExW(&klass))return 1;
     App app;
-    app.hwnd=CreateWindowExW(0,klass.lpszClassName,L"BOOTRIVA — USB Creator",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
-                             CW_USEDEFAULT,CW_USEDEFAULT,940,910,nullptr,nullptr,instance,&app);
+    // Default to a compact Rufus-like *normal window*, centered in the
+    // working area (never maximized), while respecting taskbars and DPI.
+    POINT screenPoint{};
+    MONITORINFO mi{sizeof(mi)};
+    HMONITOR monitor=MonitorFromPoint(screenPoint,MONITOR_DEFAULTTOPRIMARY);
+    if(!GetMonitorInfoW(monitor,&mi))return 1;
+    const RECT work=mi.rcWork;
+    const int availableWidth=work.right-work.left;
+    const int availableHeight=work.bottom-work.top;
+    const int dpi=static_cast<int>(GetDpiForSystem());
+    const int desiredWidth=MulDiv(660,dpi,96);
+    const int desiredHeight=MulDiv(720,dpi,96);
+    const int initialWidth=std::max(300,std::min(desiredWidth,availableWidth-48));
+    const int initialHeight=std::max(320,std::min(desiredHeight,availableHeight-48));
+    const int initialX=work.left+(availableWidth-initialWidth)/2;
+    const int initialY=work.top+(availableHeight-initialHeight)/2;
+    app.hwnd=CreateWindowExW(0,klass.lpszClassName,L"BOOTRIVA — USB Creator",
+            WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN|WS_VSCROLL,
+            initialX,initialY,initialWidth,initialHeight,
+            nullptr,nullptr,instance,&app);
     if(!app.hwnd)return 1;
-    ShowWindow(app.hwnd,show);UpdateWindow(app.hwnd);
+    // Never honor SW_SHOWMAXIMIZED at startup. This utility is compact by design.
+    ShowWindow(app.hwnd,show==SW_HIDE?SW_HIDE:SW_SHOWNORMAL);
+    UpdateWindow(app.hwnd);
     if(smoke){
         // Test the actual Win32 initialization path, not a mock UI.
         constexpr int required[]={ID_TITLE,ID_SUBTITLE,ID_DEV,ID_REFRESH,ID_IMAGE,
@@ -570,13 +725,27 @@ int run_app(HINSTANCE instance,int show,bool smoke){
         if(!title || !GetWindowTextW(title,text,80) || std::wstring(text)!=L"BOOTRIVA")
             valid=false;
         RECT bounds{};
-        if(!GetClientRect(app.hwnd,&bounds) || bounds.right<500 || bounds.bottom<400)
+        if(!GetClientRect(app.hwnd,&bounds) || bounds.right<300 || bounds.bottom<300)
             valid=false;
+        RECT outer{};
+        GetWindowRect(app.hwnd,&outer);
+        if((outer.right-outer.left)>=availableWidth ||
+           (outer.bottom-outer.top)>=availableHeight ||
+           IsZoomed(app.hwnd))valid=false;
         HWND catalog=GetDlgItem(app.hwnd,ID_CATALOG);
         if(!catalog || SendMessageW(catalog,CB_GETCOUNT,0,0)!=static_cast<LRESULT>(std::size(official_catalog)))
             valid=false;
         HWND website=GetDlgItem(app.hwnd,ID_CATALOG_OPEN);
         if(!website || !IsWindowEnabled(website))valid=false;
+        // Narrow, short windows must keep controls accessible by scrolling.
+        SetWindowPos(app.hwnd,nullptr,0,0,
+                     std::min(scale(app,450),availableWidth-32),
+                     std::min(scale(app,490),availableHeight-32),
+                     SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
+        SendMessageW(app.hwnd,WM_VSCROLL,MAKEWPARAM(SB_BOTTOM,0),0);
+        if(app.scroll_y<=0)valid=false;
+        HWND log=GetDlgItem(app.hwnd,ID_LOG);
+        if(!log || !IsWindowVisible(log))valid=false;
         DestroyWindow(app.hwnd);
         return valid?0:3;
     }

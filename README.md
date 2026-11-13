@@ -24,11 +24,11 @@ BOOTRIVA pairs a focused native Windows interface with a deliberately defensive 
 
 | Capability | Status |
 |---|---|
-| Native Windows GUI with HR and EN | Implemented in source — Windows build verification pending |
+| Native Windows GUI with HR and EN | Implemented; Windows CI GUI smoke tests |
 | Detect removable USB media | Implemented in source |
 | Inspect ISO9660, MBR and GPT image headers | Implemented and core-tested |
 | Write raw IMG/BIN or pre-hybridized ISO | Implemented — real USB tests pending |
-| Byte-for-byte read-back and SHA-256 checksum | Implemented — Windows tests pending |
+| Byte-for-byte read-back and SHA-256 checksum | Implemented; USB hardware validation pending |
 | Create Windows 10/11 installation USB with FAT32 | Experimental wizard **integrated in the GUI** using the embedded assistant; hardware testing pending |
 | GPT+UEFI and MBR+BIOS modes | GUI selection with experimental Windows media assistant |
 | NTFS on supported legacy BIOS install media | Experimental Windows media assistant |
@@ -55,6 +55,25 @@ Then select your downloaded file in BOOTRIVA and choose the USB workflow.
 ISO binary files are **not bundled** with BOOTRIVA: they are multi-gigabyte,
 may need edition selection and licensing, and direct links can expire. The
 server entry is a download reference, not a claim of certified server USB support.
+
+### Compact native Windows 11-inspired interface (v0.2.3)
+
+BOOTRIVA remains a **native C++20 Win32 executable** (no web runtime,
+Electron or embedded Chromium). On launch, the application opens a compact
+**660 × 720 logical-pixel normal window**, centered within the Windows desktop
+working area. It never opens maximized by default.
+
+The modern dark Windows interface offers:
+- rounded Windows 11 title-bar corners where supported;
+- rounded grouped cards and owner-drawn primary/secondary buttons;
+- responsive vertical stacking on narrower widths;
+- built-in vertical scrolling for smaller displays, including mouse wheel;
+- per-monitor DPI-aware dimensions and typography;
+- tested compact-launch and narrow-window control accessibility in Windows CI.
+
+Only supported Windows desktop versions are targeted. UI inspiration is not a
+claim of pixel-identical WinUI 3 controls. Real screenshots and physical
+screen-reader/200% DPI tests are still needed.
 
 ### Refined native interface (v0.2.2)
 
