@@ -29,3 +29,12 @@
 - [x] Native UI sectioned into visual cards, revised spacing, logical-DPI layout with flexible activity log, and correct UI control discovery smoke tests.
 - [ ] Capture real Windows screenshots at 100%, 150% and 200% scaling; refine font scaling based on those captures.
 - [ ] Qualify BIOS/UEFI media with real removable USB hardware and verify Microsoft installer compatibility.
+
+## v0.2.3 — Native compact adaptive desktop UI
+
+- [x] Compact, centered normal window by default (work-area and display-DPI constrained; not maximized).
+- [x] Responsive card layout: rows collapse into stacked controls on narrow windows.
+- [x] Vertical scroll with mouse wheel and scrollbar to keep every setting reachable on short screens.
+- [x] Native Win32 rounded cards/buttons, Windows 11 DWM dark caption and rounded-corner preference where supported.
+- [x] Refresh Segoe UI control fonts on per-monitor DPI changes; extend Win32 GUI smoke tests for narrow viewport scrolling and initial window size.
+- [ ] Confirm on hardware at 100%, 125%, 150%, 200% and 400% zoom, capture only genuine screenshots, test keyboard/AT navigation.

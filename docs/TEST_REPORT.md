@@ -46,3 +46,7 @@ restriction, identity mismatch, and image larger than media.
 - New rounded card layout is calculated from logical 96-DPI units with movable/resizable log section; real Windows desktop and screen-reader tests pending.
 - Windows GUI executable and smoke target now link shell32 for ShellExecuteW.
 - Signing and hardware certification remain unverified; release is a prerelease only.
+
+## v0.2.3 native responsive UI checks
+
+The GUI smoke test checks the initial non-maximized window fits inside the monitor working area, that all required controls exist, and that the settings page scrolls on a short/narrow window. CI also builds and packages the native Windows application and verifies the installer and checksums. Visual pixel-perfect, screen-reader and hardware tests remain pending; do not advertise those as completed.
