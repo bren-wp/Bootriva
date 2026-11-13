@@ -26,12 +26,12 @@ constexpr int ID_PROGRESS=107,ID_STATUS=108,ID_LOG=109,ID_TITLE=110,ID_SUBTITLE=
 constexpr int ID_WINUSB=116,ID_MODE=117,ID_MODE_LABEL=118;
 constexpr int ID_CATALOG=119,ID_CATALOG_LABEL=120,ID_CATALOG_OPEN=121,ID_CATALOG_NOTE=122;
 constexpr UINT MSG_PROGRESS=WM_APP+11,MSG_DONE=WM_APP+12;
-constexpr COLORREF BG=RGB(13,21,36),FG=RGB(235,243,250),MUTED=RGB(156,175,192),ACCENT=RGB(29,197,204),PANEL=RGB(24,36,56);
+constexpr COLORREF BG=RGB(246,247,250),FG=RGB(29,37,50),MUTED=RGB(97,110,126),ACCENT=RGB(0,110,200),PANEL=RGB(255,255,255),BORDER=RGB(224,230,238);
 struct ProgressEvent {unsigned value;std::wstring text;};
 struct DoneEvent {bool ok;std::wstring text;};
 struct App {
-    HWND hwnd{},dev{},refresh{},image{},browse{},hash{},flash{},winusb{},mode{},mode_label{},catalog{},catalog_label{},catalog_open{},catalog_note{},lang{},progress{},status{},log{},title{},subtitle{},device_label{},image_label{},info{},version{};
-    HFONT font{},title_font{},small_font{};
+    HWND hwnd{},page{},dev{},refresh{},image{},browse{},hash{},flash{},winusb{},mode{},mode_label{},catalog{},catalog_label{},catalog_open{},catalog_note{},lang{},progress{},status{},log{},title{},subtitle{},device_label{},image_label{},info{},version{};
+    HFONT font{},title_font{},small_font{},section_font{};
     HBRUSH background{},panel{};
     std::vector<Drive> drives;
     std::wstring image_path;
@@ -41,7 +41,7 @@ struct App {
     bool busy=false,close_after=false,english=false,external_process=false;
     int scroll_y=0,content_height=780;
     std::array<std::pair<int,int>,5> card_ranges{};
-    ~App(){cancel=true;if(worker.joinable())worker.join();if(font)DeleteObject(font);if(title_font)DeleteObject(title_font);if(small_font)DeleteObject(small_font);if(background)DeleteObject(background);if(panel)DeleteObject(panel);}
+    ~App(){cancel=true;if(worker.joinable())worker.join();if(font)DeleteObject(font);if(title_font)DeleteObject(title_font);if(small_font)DeleteObject(small_font);if(section_font)DeleteObject(section_font);if(background)DeleteObject(background);if(panel)DeleteObject(panel);}
 };
 std::wstring tr(const App& a,const wchar_t* hr,const wchar_t* en){return a.english?en:hr;}
 void settext(HWND h,const std::wstring& s){SetWindowTextW(h,s.c_str());}
@@ -61,91 +61,104 @@ HWND child(HWND p,LPCWSTR type,LPCWSTR title,DWORD style,int id){
 void font(HWND h,HFONT f){SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(f),TRUE);}
 int scale(const App& a,int value){return MulDiv(value,static_cast<int>(GetDpiForWindow(a.hwnd)),96);}
 void layout(App& a,int w,int h){
-    if(!a.dev || w<=0 || h<=0)return;
+    if(!a.page || !a.dev || w<=0 || h<=0)return;
+    // The 77-pixel header is an independent native parent surface. Page
+    // children cannot paint across it, even when scroll position is non-zero.
+    const int top=scale(a,78);
+    const int pageHeight=std::max(1,h-top);
+    MoveWindow(a.page,0,top,w,pageHeight,TRUE);
     const int dpi=static_cast<int>(GetDpiForWindow(a.hwnd));
-    const int width=MulDiv(w,96,dpi),height=MulDiv(h,96,dpi);
-    const int outer=16,inner=outer+16,content=std::max(220,width-inner*2);
-    const bool narrow=content<475;
-    const int btn=162,gap=10;
-    const int inputWidth=narrow?content:content-btn-gap;
-    const int buttonX=narrow?inner:inner+inputWidth+gap;
-    auto place=[&](HWND control,int x,int y,int cw,int ch){
+    RECT bodyRect{};
+    GetClientRect(a.page,&bodyRect);
+    const int width=MulDiv(static_cast<int>(bodyRect.right),96,dpi);
+    const int height=static_cast<int>(bodyRect.bottom);
+    const int gutter=16,margin=30;
+    const int content=std::max(220,width-2*margin);
+    const int right=margin+content;
+    const bool stacked=content<510;
+    const int actionButton=172,gap=10;
+    const int fieldWidth=stacked?content:content-actionButton-gap;
+    const int buttonX=stacked?margin:margin+fieldWidth+gap;
+    auto place=[&](HWND control,int x,int y,int cx,int cy){
         if(control)MoveWindow(control,scale(a,x),scale(a,y)-a.scroll_y,
-                              scale(a,std::max(1,cw)),scale(a,std::max(1,ch)),TRUE);
+                              scale(a,std::max(1,cx)),scale(a,std::max(1,cy)),TRUE);
     };
-    // Header and scrollable cards are laid out in *logical* 96-DPI units.
-    // Each group grows vertically when the window is narrow, rather than
-    // allowing controls to overlap or become clipped.
-    place(a.title,inner,14,std::max(180,content-173),35);
-    place(a.subtitle,inner,49,std::max(180,content-115),24);
-    place(a.version,inner+content-160,12,160,19);
-    place(a.lang,inner+content-91,44,91,30);
-    int y=90;
-    const int catTop=y;
-    place(a.catalog_label,inner,y+12,content,22);
-    place(a.catalog,inner,y+42,inputWidth,220);
-    place(a.catalog_open,buttonX,y+(narrow?82:41),narrow?content:btn,36);
-    const int catNoteY=y+(narrow?125:85);
-    place(a.catalog_note,inner,catNoteY,content,39);
-    y=catNoteY+48;
-    a.card_ranges[0]={catTop,y};
+    // Fixed, screen-reader-visible header stays anchored while content scrolls.
+    MoveWindow(a.title,scale(a,margin),scale(a,9),scale(a,std::max(170,content-175)),
+               scale(a,36),TRUE);
+    MoveWindow(a.subtitle,scale(a,margin),scale(a,44),scale(a,std::max(170,content-80)),
+               scale(a,24),TRUE);
+    MoveWindow(a.version,scale(a,right-160),scale(a,12),scale(a,160),scale(a,20),TRUE);
+    MoveWindow(a.lang,scale(a,right-96),scale(a,38),scale(a,96),scale(a,29),TRUE);
+
+    int y=12;
+    const int catalogTop=y;
+    place(a.catalog_label,margin,y+12,content,19);
+    place(a.catalog,margin,y+37,fieldWidth,180);
+    place(a.catalog_open,buttonX,y+(stacked?75:36),stacked?content:actionButton,34);
+    const int noteY=y+(stacked?119:78);
+    place(a.catalog_note,margin,noteY,content,34);
+    y=noteY+44;
+    a.card_ranges[0]={catalogTop,y};
     y+=9;
+
     const int deviceTop=y;
-    place(a.device_label,inner,y+12,content,22);
-    place(a.dev,inner,y+42,inputWidth,220);
-    place(a.refresh,buttonX,y+(narrow?82:41),narrow?content:btn,36);
-    y+=(narrow?130:91);
+    place(a.device_label,margin,y+12,content,19);
+    place(a.dev,margin,y+37,fieldWidth,180);
+    place(a.refresh,buttonX,y+(stacked?75:36),stacked?content:actionButton,34);
+    y+=(stacked?121:80);
     a.card_ranges[1]={deviceTop,y};
     y+=9;
+
     const int imageTop=y;
-    place(a.image_label,inner,y+12,content,22);
-    place(a.image,inner,y+42,inputWidth,36);
-    place(a.browse,buttonX,y+(narrow?82:41),narrow?content:btn,36);
-    const int actionsY=y+(narrow?132:90);
-    const int actionWidth=(content-gap)/2;
-    place(a.hash,inner,actionsY,actionWidth,37);
-    place(a.flash,inner+actionWidth+gap,actionsY,actionWidth,37);
-    y=actionsY+48;
+    place(a.image_label,margin,y+12,content,19);
+    place(a.image,margin,y+37,fieldWidth,34);
+    place(a.browse,buttonX,y+(stacked?75:36),stacked?content:actionButton,34);
+    const int actions=y+(stacked?119:82);
+    const int half=(content-gap)/2;
+    place(a.hash,margin,actions,half,34);
+    place(a.flash,margin+half+gap,actions,half,34);
+    y=actions+44;
     a.card_ranges[2]={imageTop,y};
     y+=9;
+
     const int mediaTop=y;
-    place(a.mode_label,inner,y+12,content,22);
-    place(a.mode,inner,y+42,inputWidth,220);
-    place(a.winusb,buttonX,y+(narrow?82:41),narrow?content:btn,36);
-    y+=(narrow?130:91);
+    place(a.mode_label,margin,y+12,content,19);
+    place(a.mode,margin,y+37,fieldWidth,180);
+    place(a.winusb,buttonX,y+(stacked?75:36),stacked?content:actionButton,34);
+    y+=(stacked?121:80);
     a.card_ranges[3]={mediaTop,y};
     y+=9;
-    const int activityTop=y;
-    place(a.info,inner,y+12,content,43);
-    place(a.progress,inner,y+64,content,13);
-    place(a.status,inner,y+86,content,25);
-    const int logHeight=std::max(94,height-(y+132));
-    place(a.log,inner,y+119,content,logHeight);
-    y+=119+logHeight+17;
-    a.card_ranges[4]={activityTop,y};
-    a.content_height=y+14;
-    const int priorScroll=a.scroll_y;
-    const int maxScroll=std::max(0,scale(a,a.content_height)-h);
-    a.scroll_y=std::clamp(a.scroll_y,0,maxScroll);
-    // Re-run placement once if a resize shortened the scrollable document.
-    if(a.scroll_y!=priorScroll){layout(a,w,h);return;}
-    SCROLLINFO info{sizeof(info)};
-    info.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
-    info.nMin=0;
-    info.nMax=std::max(0,scale(a,a.content_height)-1);
-    info.nPage=static_cast<UINT>(h);
-    info.nPos=a.scroll_y;
-    SetScrollInfo(a.hwnd,SB_VERT,&info,TRUE);
+
+    const int statusTop=y;
+    place(a.info,margin,y+12,content,39);
+    place(a.progress,margin,y+58,content,12);
+    place(a.status,margin,y+80,content,41);
+    const int logHeight=115;
+    place(a.log,margin,y+126,content,logHeight);
+    y+=126+logHeight+15;
+    a.card_ranges[4]={statusTop,y};
+    a.content_height=y+12;
+    const int before=a.scroll_y;
+    a.scroll_y=std::clamp(a.scroll_y,0,std::max(0,scale(a,a.content_height)-height));
+    if(a.scroll_y!=before){layout(a,w,h);return;}
+    SCROLLINFO scroll{sizeof(scroll)};
+    scroll.fMask=SIF_RANGE|SIF_PAGE|SIF_POS;
+    scroll.nMin=0;scroll.nMax=std::max(0,scale(a,a.content_height)-1);
+    scroll.nPage=static_cast<UINT>(height);
+    scroll.nPos=a.scroll_y;
+    SetScrollInfo(a.page,SB_VERT,&scroll,TRUE);
 }
 void scroll_to(App& a,int desired){
-    RECT client{};
-    GetClientRect(a.hwnd,&client);
-    const int maxScroll=std::max(0,scale(a,a.content_height)-static_cast<int>(client.bottom-client.top));
+    if(!a.page)return;
+    RECT client{};GetClientRect(a.page,&client);
+    int maxScroll=std::max(0,scale(a,a.content_height)-static_cast<int>(client.bottom));
     int target=std::clamp(desired,0,maxScroll);
     if(target==a.scroll_y)return;
     a.scroll_y=target;
-    layout(a,client.right-client.left,client.bottom-client.top);
-    InvalidateRect(a.hwnd,nullptr,FALSE);
+    RECT outer{};GetClientRect(a.hwnd,&outer);
+    layout(a,static_cast<int>(outer.right),static_cast<int>(outer.bottom));
+    InvalidateRect(a.page,nullptr,FALSE);
 }
 struct CatalogEntry {
     const wchar_t* title;
@@ -201,19 +214,19 @@ void update_buttons(App& a){
 void translate(App& a){
     settext(a.title,L"BOOTRIVA");
     settext(a.subtitle,tr(a,L"Pokreni sustav. Sigurno i jednostavno.",L"Boot made simple. Safety built in."));
-    settext(a.version,L"v0.2.3  |  BRENDIGO");
+    settext(a.version,L"v0.2.4  ·  BRENDIGO");
     settext(a.lang,a.english?L"HR  /  EN ✓":L"HR ✓  /  EN");
     settext(a.catalog_label,tr(a,L"01   KATALOG SLUŽBENIH WINDOWS ISO",L"01   OFFICIAL WINDOWS ISO CATALOG"));
-    settext(a.catalog_open,tr(a,L"OTVORI MICROSOFT",L"OPEN MICROSOFT"));
+    settext(a.catalog_open,tr(a,L"SLUŽBENI ISO",L"OFFICIAL ISO"));
     settext(a.device_label,tr(a,L"02   ODABERI USB UREĐAJ",L"02   SELECT USB DEVICE"));
     settext(a.image_label,tr(a,L"03   ODABERI ISO / IMG / BIN DATOTEKU",L"03   SELECT ISO / IMG / BIN IMAGE"));
     settext(a.refresh,tr(a,L"Osvježi",L"Refresh"));
     settext(a.browse,tr(a,L"Odaberi...",L"Browse..."));
     settext(a.hash,L"SHA-256");
     settext(a.mode_label,tr(a,L"04   WINDOWS 10/11 INSTALACIJSKI USB",L"04   WINDOWS 10/11 INSTALLATION USB"));
-    settext(a.winusb,tr(a,L"KREIRAJ WINDOWS USB",L"CREATE WINDOWS USB"));
-    settext(a.info,tr(a,L"SIGURNOST  |  Uređaj se briše tek nakon potvrde BRISI. Provjeri broj i veličinu USB diska.",
-                          L"SAFETY  |  Erasure requires typed confirmation. Verify the target USB disk number and capacity."));
+    settext(a.winusb,tr(a,L"WINDOWS USB",L"WINDOWS USB"));
+    settext(a.info,tr(a,L"SIGURNOST  ·  Briše se tek nakon potvrde BRISI. Provjeri odabrani USB disk.",
+                          L"SAFETY  ·  Erasure requires confirmation. Verify the target USB disk."));
     update_catalog_note(a);
     update_buttons(a);
 }
@@ -308,7 +321,7 @@ void launch(App& a,bool do_flash){
     SendMessageW(a.progress,PBM_SETPOS,0,0);
     update_buttons(a);
     // Cancellation remains clickable even while the rest of the UI is locked.
-    EnableWindow(a.flash,TRUE);
+    if(do_flash)EnableWindow(a.flash,TRUE);
     if(do_flash)status(a,tr(a,L"USB zapisivanje je pokrenuto...",L"USB writing started..."));
     else status(a,L"SHA-256 started...");
     const auto file=a.image_path;const auto info=a.image_info;const auto hwnd=a.hwnd;
@@ -418,72 +431,98 @@ void launch_windows_installer(App& a){
     });
 }
 void paint_button(DRAWITEMSTRUCT* item){
+    if(!item || item->CtlType!=ODT_BUTTON)return;
     const bool disabled=(item->itemState&ODS_DISABLED)!=0;
-    const bool pressed=(item->itemState&ODS_SELECTED)!=0;
+    const bool pushed=(item->itemState&ODS_SELECTED)!=0;
     const bool primary=item->CtlID==ID_FLASH || item->CtlID==ID_WINUSB;
-    const bool source=item->CtlID==ID_CATALOG_OPEN;
-    COLORREF bg=disabled?RGB(55,67,81):(primary?(pressed?RGB(16,159,171):ACCENT):(source?RGB(26,86,109):RGB(37,52,72)));
-    COLORREF fg=disabled?MUTED:(primary?RGB(8,29,36):FG);
-    HBRUSH brush=CreateSolidBrush(bg);
-    HPEN pen=CreatePen(PS_SOLID,1,disabled?RGB(64,77,91):(primary?ACCENT:RGB(63,87,105)));
-    HGDIOBJ oldBrush=SelectObject(item->hDC,brush),oldPen=SelectObject(item->hDC,pen);
-    RECT button=item->rcItem;
-    InflateRect(&button,-1,-1);
-    RoundRect(item->hDC,button.left,button.top,button.right,button.bottom,12,12);
+    const bool external=item->CtlID==ID_CATALOG_OPEN;
+    COLORREF fill=disabled?RGB(232,235,240):
+        primary?(pushed?RGB(0,88,164):ACCENT):
+        external?(pushed?RGB(221,237,250):RGB(233,244,253)):
+        (pushed?RGB(222,230,240):RGB(243,246,250));
+    COLORREF ink=disabled?RGB(145,156,171):primary?RGB(255,255,255):
+        external?RGB(0,91,169):FG;
+    // Paint every pixel, including outside rounded corners. This prevents
+    // leftover white/system-button stripes from native owner-draw invalidation.
+    HBRUSH under=CreateSolidBrush(PANEL);
+    FillRect(item->hDC,&item->rcItem,under);
+    DeleteObject(under);
+    HBRUSH surface=CreateSolidBrush(fill);
+    HPEN outline=CreatePen(PS_SOLID,1,disabled?RGB(220,224,230):
+                          primary?fill:RGB(211,221,232));
+    HGDIOBJ oldBrush=SelectObject(item->hDC,surface);
+    HGDIOBJ oldPen=SelectObject(item->hDC,outline);
+    RECT box=item->rcItem;InflateRect(&box,-1,-1);
+    RoundRect(item->hDC,box.left,box.top,box.right,box.bottom,10,10);
     SelectObject(item->hDC,oldPen);SelectObject(item->hDC,oldBrush);
-    DeleteObject(pen);DeleteObject(brush);
-    wchar_t title[128]{};GetWindowTextW(item->hwndItem,title,128);
-    SetTextColor(item->hDC,fg);SetBkMode(item->hDC,TRANSPARENT);
-    SelectObject(item->hDC,reinterpret_cast<HFONT>(SendMessageW(item->hwndItem,WM_GETFONT,0,0)));
-    RECT r=item->rcItem;DrawTextW(item->hDC,title,-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
-    if(item->itemState&ODS_FOCUS){RECT inset=item->rcItem;InflateRect(&inset,-3,-3);DrawFocusRect(item->hDC,&inset);}
+    DeleteObject(surface);DeleteObject(outline);
+    wchar_t text[128]{};GetWindowTextW(item->hwndItem,text,128);
+    SetTextColor(item->hDC,ink);
+    SetBkMode(item->hDC,TRANSPARENT);
+    HGDIOBJ oldFont=SelectObject(item->hDC,
+        reinterpret_cast<HFONT>(SendMessageW(item->hwndItem,WM_GETFONT,0,0)));
+    RECT label=item->rcItem;InflateRect(&label,-8,-2);
+    DrawTextW(item->hDC,text,-1,&label,
+              DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS|DT_NOPREFIX);
+    SelectObject(item->hDC,oldFont);
+    if(item->itemState&ODS_FOCUS){
+        RECT focus=box;InflateRect(&focus,-4,-4);DrawFocusRect(item->hDC,&focus);
+    }
 }
 bool create_controls(App& a){
     a.background=CreateSolidBrush(BG);a.panel=CreateSolidBrush(PANEL);
     a.font=CreateFontW(-scale(a,16),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
     a.title_font=CreateFontW(-scale(a,28),0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
     a.small_font=CreateFontW(-scale(a,13),0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+    // This clipped viewport isolates scrollable cards from the sticky header.
+    a.page=CreateWindowExW(0,L"BootrivaPage",L"",
+           WS_CHILD|WS_VISIBLE|WS_CLIPCHILDREN|WS_VSCROLL,
+           0,0,0,0,a.hwnd,nullptr,GetModuleHandleW(nullptr),nullptr);
+    if(!a.page)return false;
     a.title=child(a.hwnd,L"STATIC",L"BOOTRIVA",SS_LEFT,ID_TITLE);
     a.subtitle=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_SUBTITLE);
     a.version=child(a.hwnd,L"STATIC",L"",SS_RIGHT,ID_VERSION);
     a.lang=child(a.hwnd,L"BUTTON",L"HR / EN",BS_OWNERDRAW|WS_TABSTOP,ID_LANG);
-    a.catalog_label=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_CATALOG_LABEL);
-    a.catalog=child(a.hwnd,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_CATALOG);
-    a.catalog_open=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_CATALOG_OPEN);
-    a.catalog_note=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_CATALOG_NOTE);
+    a.catalog_label=child(a.page,L"STATIC",L"",SS_LEFT,ID_CATALOG_LABEL);
+    a.catalog=child(a.page,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_CATALOG);
+    a.catalog_open=child(a.page,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_CATALOG_OPEN);
+    a.catalog_note=child(a.page,L"STATIC",L"",SS_LEFT,ID_CATALOG_NOTE);
     if(a.catalog){
         for(const auto& item:official_catalog)
             SendMessageW(a.catalog,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(item.title));
         SendMessageW(a.catalog,CB_SETCURSEL,0,0);
     }
-    a.device_label=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_L_DEVICE);
-    a.dev=child(a.hwnd,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_DEV);
-    a.refresh=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_REFRESH);
-    a.image_label=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_L_IMAGE);
-    a.image=child(a.hwnd,L"EDIT",L"",ES_READONLY|ES_AUTOHSCROLL|WS_BORDER,ID_IMAGE);
-    a.browse=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_BROWSE);
-    a.hash=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_HASH);
-    a.flash=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_FLASH);
-    a.mode_label=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_MODE_LABEL);
-    a.mode=child(a.hwnd,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_MODE);
-    a.winusb=child(a.hwnd,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_WINUSB);
+    a.device_label=child(a.page,L"STATIC",L"",SS_LEFT,ID_L_DEVICE);
+    a.dev=child(a.page,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_DEV);
+    a.refresh=child(a.page,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_REFRESH);
+    a.image_label=child(a.page,L"STATIC",L"",SS_LEFT,ID_L_IMAGE);
+    a.image=child(a.page,L"EDIT",L"",ES_READONLY|ES_AUTOHSCROLL|WS_BORDER|WS_TABSTOP,ID_IMAGE);
+    a.browse=child(a.page,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_BROWSE);
+    a.hash=child(a.page,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_HASH);
+    a.flash=child(a.page,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_FLASH);
+    a.mode_label=child(a.page,L"STATIC",L"",SS_LEFT,ID_MODE_LABEL);
+    a.mode=child(a.page,L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_VSCROLL|WS_TABSTOP,ID_MODE);
+    a.winusb=child(a.page,L"BUTTON",L"",BS_OWNERDRAW|WS_TABSTOP,ID_WINUSB);
     if(a.mode){
         for(const wchar_t* value:{L"UEFI  /  FAT32",L"Legacy BIOS  /  FAT32",L"Legacy BIOS  /  NTFS"})
             SendMessageW(a.mode,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(value));
         SendMessageW(a.mode,CB_SETCURSEL,0,0);
     }
-    a.info=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_INFO);
-    a.progress=child(a.hwnd,PROGRESS_CLASSW,L"",PBS_SMOOTH,ID_PROGRESS);
-    a.status=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_STATUS);
-    a.log=child(a.hwnd,L"EDIT",L"",ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_BORDER,ID_LOG);
+    a.info=child(a.page,L"STATIC",L"",SS_LEFT,ID_INFO);
+    a.progress=child(a.page,PROGRESS_CLASSW,L"",PBS_SMOOTH,ID_PROGRESS);
+    a.status=child(a.page,L"STATIC",L"",SS_LEFT,ID_STATUS);
+    a.log=child(a.page,L"EDIT",L"",ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_BORDER|WS_TABSTOP,ID_LOG);
     // Win32 CreateWindowEx can fail. Check every required child before dereferencing it.
-    for(HWND h:{a.title,a.subtitle,a.version,a.lang,a.catalog_label,a.catalog,a.catalog_open,a.catalog_note,a.device_label,a.dev,a.refresh,
+    for(HWND h:{a.page,a.title,a.subtitle,a.version,a.lang,a.catalog_label,a.catalog,a.catalog_open,a.catalog_note,a.device_label,a.dev,a.refresh,
                 a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,
                 a.info,a.progress,a.status,a.log}){
         if(!h)return false;
     }
     for(HWND h:{a.subtitle,a.version,a.catalog_label,a.catalog,a.catalog_open,a.catalog_note,a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,a.info,a.status,a.log,a.lang})font(h,a.font);
     font(a.title,a.title_font);font(a.version,a.small_font);font(a.info,a.small_font);font(a.log,a.small_font);font(a.catalog_note,a.small_font);
+    for(HWND h:{a.catalog_label,a.device_label,a.image_label,a.mode_label})font(h,a.small_font);
+    SendMessageW(a.progress,PBM_SETBARCOLOR,0,static_cast<LPARAM>(ACCENT));
+    SendMessageW(a.progress,PBM_SETBKCOLOR,0,static_cast<LPARAM>(RGB(232,239,248)));
     translate(a);
     RECT r;GetClientRect(a.hwnd,&r);layout(a,r.right-r.left,r.bottom-r.top);
     refresh_drives(a);
@@ -500,7 +539,7 @@ void refresh_fonts(App& a){
     for(HWND control:{a.subtitle,a.lang,a.catalog_label,a.catalog,a.catalog_open,
             a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,
             a.flash,a.mode_label,a.mode,a.winusb,a.status})if(control)font(control,a.font);
-    for(HWND control:{a.version,a.info,a.log,a.catalog_note})if(control)font(control,a.small_font);
+    for(HWND control:{a.version,a.info,a.log,a.catalog_note,a.catalog_label,a.device_label,a.image_label,a.mode_label})if(control)font(control,a.small_font);
     if(a.title)font(a.title,a.title_font);
     if(previous)DeleteObject(previous);
     if(previousTitle)DeleteObject(previousTitle);
