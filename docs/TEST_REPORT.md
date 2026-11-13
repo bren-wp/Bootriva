@@ -50,3 +50,11 @@ restriction, identity mismatch, and image larger than media.
 ## v0.2.3 native responsive UI checks
 
 The GUI smoke test checks the initial non-maximized window fits inside the monitor working area, that all required controls exist, and that the settings page scrolls on a short/narrow window. CI also builds and packages the native Windows application and verifies the installer and checksums. Visual pixel-perfect, screen-reader and hardware tests remain pending; do not advertise those as completed.
+
+## v0.2.4 screenshot defect reproduction and checks
+
+Input: actual Windows screenshot from the user (2026-11-13), demonstrating clipped top header, bright progress stripe, truncated 'KREIRAJ WINDOWS USB' text, mismatched native dropdown arrows, large empty cards, and scroll/overlap problems.
+
+Correction: fixed header stays on parent window; card controls live inside child viewport, which clips scrolling at the header boundary and forwards Win32 control commands, paint/draw and status messages to the parent. A light Fluent palette harmonizes standard Windows widgets. Layout labels and action controls use compact dimensions; progress is painted by a separate native Win32 class.
+
+Automated smoke: native startup controls, official ISO entries, nonmaximized initial window, narrow-screen scroll to activity log, and immobility of header during scrolling. Real Windows screenshots and high-DPI hardware verification remain open.

@@ -80,7 +80,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      PREVIEW_TAG: v0.2.3-preview.1
+      PREVIEW_TAG: v0.2.4-preview.1
     steps:
       - name: Download verified Windows binaries
         uses: actions/download-artifact@v4
@@ -103,7 +103,7 @@ jobs:
               release/BOOTRIVA-Setup.exe \
               release/SHA256SUMS.txt \
               --target "${{ github.sha }}" \
-              --title "BOOTRIVA $PREVIEW_TAG · Compact native Windows 11 UI" \
-              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Adds compact centered startup window, Windows 11 inspired cards/buttons, adaptive responsive layout and scrolling for smaller screens. Real USB hardware validation and genuine screenshots remain pending." \
+              --title "BOOTRIVA $PREVIEW_TAG · Fluent layout fixes" \
+              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Fixes screenshot-reported clipping with isolated scrolling and sticky header. Uses cohesive light Fluent surfaces, smaller cards, clearer buttons and a custom progress track. Real USB hardware validation and genuine screenshots remain pending." \
               --prerelease
           fi
