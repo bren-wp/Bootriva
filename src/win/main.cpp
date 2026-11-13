@@ -97,8 +97,9 @@ void layout(App& a,int w,int h){
     place(a.catalog,margin,y+37,fieldWidth,180);
     place(a.catalog_open,buttonX,y+(stacked?75:36),stacked?content:actionButton,34);
     const int noteY=y+(stacked?119:78);
-    place(a.catalog_note,margin,noteY,content,34);
-    y=noteY+44;
+    const int noteHeight=stacked?56:35;
+    place(a.catalog_note,margin,noteY,content,noteHeight);
+    y=noteY+noteHeight+10;
     a.card_ranges[0]={catalogTop,y};
     y+=9;
 
@@ -545,6 +546,51 @@ void refresh_fonts(App& a){
     if(previousTitle)DeleteObject(previousTitle);
     if(previousSmall)DeleteObject(previousSmall);
 }
+LRESULT CALLBACK page_proc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
+    HWND owner=GetParent(hwnd);
+    auto* a=reinterpret_cast<App*>(GetWindowLongPtrW(owner,GWLP_USERDATA));
+    switch(message){
+    case WM_COMMAND:
+    case WM_DRAWITEM:
+    case WM_MEASUREITEM:
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+        if(owner)return SendMessageW(owner,message,w,l);
+        break;
+    case WM_MOUSEWHEEL:
+    case WM_VSCROLL:
+        if(owner && (message!=WM_VSCROLL || l==0))
+            return SendMessageW(owner,message,w,l);
+        break;
+    case WM_ERASEBKGND:return 1;
+    case WM_PAINT:{
+        PAINTSTRUCT ps{};HDC screen=BeginPaint(hwnd,&ps);
+        RECT clip{};GetClientRect(hwnd,&clip);
+        FillRect(screen,&clip,a && a->background?a->background:GetSysColorBrush(COLOR_WINDOW));
+        if(a){
+            const int dpi=static_cast<int>(GetDpiForWindow(owner));
+            auto px=[dpi](int logical){return MulDiv(logical,dpi,96);};
+            int pageWidth=static_cast<int>(clip.right);
+            HBRUSH surface=CreateSolidBrush(PANEL);
+            HPEN outline=CreatePen(PS_SOLID,std::max(1,px(1)),BORDER);
+            HGDIOBJ prevBrush=SelectObject(screen,surface);
+            HGDIOBJ prevPen=SelectObject(screen,outline);
+            for(const auto& card:a->card_ranges){
+                const int top=px(card.first)-a->scroll_y;
+                const int bottom=px(card.second)-a->scroll_y;
+                if(bottom<=0 || top>=clip.bottom)continue;
+                RoundRect(screen,px(12),top,pageWidth-px(12),bottom,px(13),px(13));
+            }
+            SelectObject(screen,prevPen);SelectObject(screen,prevBrush);
+            DeleteObject(outline);DeleteObject(surface);
+        }
+        EndPaint(hwnd,&ps);
+        return 0;
+    }
+    }
+    return DefWindowProcW(hwnd,message,w,l);
+}
 LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     auto* app=reinterpret_cast<App*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
     if(message==WM_NCCREATE){
@@ -561,7 +607,7 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     App& a=*app;
     switch(message){
     case WM_CREATE:{
-        BOOL dark=TRUE;
+        BOOL dark=FALSE;
         DwmSetWindowAttribute(hwnd,20,&dark,sizeof(dark));
         // Windows 11 uses rounded corners and a seamless dark caption.
         // Unsupported DWM attributes safely fail on older Windows versions.
@@ -589,7 +635,7 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         if(reinterpret_cast<HWND>(l))break;
         SCROLLINFO current{sizeof(current)};
         current.fMask=SIF_ALL;
-        GetScrollInfo(hwnd,SB_VERT,&current);
+        if(a.page)GetScrollInfo(a.page,SB_VERT,&current);
         int next=a.scroll_y;
         switch(LOWORD(w)){
         case SB_LINEUP:next-=scale(a,40);break;
@@ -663,35 +709,11 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     case WM_ERASEBKGND:return 1; // One background paint; avoid a white startup flash.
     case WM_PAINT:{
         PAINTSTRUCT ps{};HDC dc=BeginPaint(hwnd,&ps);
-        RECT viewport{};GetClientRect(hwnd,&viewport);
-        HDC buffer=CreateCompatibleDC(dc);
-        HBITMAP pixels=CreateCompatibleBitmap(dc,std::max(1,static_cast<int>(viewport.right)),
-                                              std::max(1,static_cast<int>(viewport.bottom)));
-        if(!buffer || !pixels){
-            FillRect(dc,&viewport,a.background);
-            if(pixels)DeleteObject(pixels);
-            if(buffer)DeleteDC(buffer);
-            EndPaint(hwnd,&ps);
-            return 0;
-        }
-        HGDIOBJ oldBitmap=SelectObject(buffer,pixels);
-        FillRect(buffer,&viewport,a.background);
-        const int dpi=static_cast<int>(GetDpiForWindow(hwnd));
-        auto s=[dpi](int n){return MulDiv(n,dpi,96);};
-        const int logicalWidth=MulDiv(viewport.right,96,dpi);
-        HPEN border=CreatePen(PS_SOLID,std::max(1,s(1)),RGB(50,68,88));
-        HBRUSH surface=CreateSolidBrush(PANEL);
-        HGDIOBJ oldPen=SelectObject(buffer,border),oldBrush=SelectObject(buffer,surface);
-        for(const auto& card:a.card_ranges){
-            int top=s(card.first)-a.scroll_y;
-            int bottom=s(card.second)-a.scroll_y;
-            if(bottom<0 || top>viewport.bottom)continue;
-            RoundRect(buffer,s(16),top,s(std::max(20,logicalWidth-16)),bottom,s(14),s(14));
-        }
-        SelectObject(buffer,oldPen);SelectObject(buffer,oldBrush);
-        DeleteObject(border);DeleteObject(surface);
-        BitBlt(dc,0,0,viewport.right,viewport.bottom,buffer,0,0,SRCCOPY);
-        SelectObject(buffer,oldBitmap);DeleteObject(pixels);DeleteDC(buffer);
+        RECT client{};GetClientRect(hwnd,&client);
+        FillRect(dc,&client,a.background);
+        const int divider=scale(a,77);
+        RECT line{0,divider,client.right,divider+std::max(1,scale(a,1))};
+        HBRUSH edge=CreateSolidBrush(BORDER);FillRect(dc,&line,edge);DeleteObject(edge);
         EndPaint(hwnd,&ps);
         return 0;
     }
@@ -721,6 +743,12 @@ int run_app(HINSTANCE instance,int show,bool smoke){
     klass.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(101));
     klass.hIconSm=klass.hIcon;
     klass.hCursor=LoadCursorW(nullptr,IDC_ARROW);klass.hbrBackground=nullptr;
+    WNDCLASSEXW pageClass{sizeof(pageClass)};
+    pageClass.hInstance=instance;
+    pageClass.lpfnWndProc=page_proc;
+    pageClass.lpszClassName=L"BootrivaPage";
+    pageClass.hCursor=LoadCursorW(nullptr,IDC_ARROW);
+    if(!RegisterClassExW(&pageClass))return 1;
     if(!RegisterClassExW(&klass))return 1;
     App app;
     // Default to a compact Rufus-like *normal window*, centered in the
@@ -733,14 +761,14 @@ int run_app(HINSTANCE instance,int show,bool smoke){
     const int availableWidth=work.right-work.left;
     const int availableHeight=work.bottom-work.top;
     const int dpi=static_cast<int>(GetDpiForSystem());
-    const int desiredWidth=MulDiv(660,dpi,96);
-    const int desiredHeight=MulDiv(720,dpi,96);
+    const int desiredWidth=MulDiv(715,dpi,96);
+    const int desiredHeight=MulDiv(700,dpi,96);
     const int initialWidth=std::max(300,std::min(desiredWidth,availableWidth-48));
     const int initialHeight=std::max(320,std::min(desiredHeight,availableHeight-48));
     const int initialX=work.left+(availableWidth-initialWidth)/2;
     const int initialY=work.top+(availableHeight-initialHeight)/2;
     app.hwnd=CreateWindowExW(0,klass.lpszClassName,L"BOOTRIVA — USB Creator",
-            WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN|WS_VSCROLL,
+            WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
             initialX,initialY,initialWidth,initialHeight,
             nullptr,nullptr,instance,&app);
     if(!app.hwnd)return 1;
@@ -752,8 +780,12 @@ int run_app(HINSTANCE instance,int show,bool smoke){
         constexpr int required[]={ID_TITLE,ID_SUBTITLE,ID_DEV,ID_REFRESH,ID_IMAGE,
             ID_BROWSE,ID_HASH,ID_FLASH,ID_MODE,ID_WINUSB,ID_CATALOG,ID_CATALOG_OPEN,ID_CATALOG_NOTE,ID_LANG,ID_PROGRESS,ID_STATUS,ID_LOG};
         bool valid=true;
+        auto controlById=[&](int id)->HWND{
+            HWND result=GetDlgItem(app.hwnd,id);
+            return result?result:(app.page?GetDlgItem(app.page,id):nullptr);
+        };
         for(int id:required){
-            HWND control=GetDlgItem(app.hwnd,id);
+            HWND control=controlById(id);
             if(!control || !IsWindowVisible(control)){
                 OutputDebugStringW(L"BOOTRIVA smoke: missing or hidden child control");
                 valid=false;
@@ -771,20 +803,28 @@ int run_app(HINSTANCE instance,int show,bool smoke){
         if((outer.right-outer.left)>=availableWidth ||
            (outer.bottom-outer.top)>=availableHeight ||
            IsZoomed(app.hwnd))valid=false;
-        HWND catalog=GetDlgItem(app.hwnd,ID_CATALOG);
+        HWND catalog=controlById(ID_CATALOG);
         if(!catalog || SendMessageW(catalog,CB_GETCOUNT,0,0)!=static_cast<LRESULT>(std::size(official_catalog)))
             valid=false;
-        HWND website=GetDlgItem(app.hwnd,ID_CATALOG_OPEN);
+        HWND website=controlById(ID_CATALOG_OPEN);
         if(!website || !IsWindowEnabled(website))valid=false;
         // Narrow, short windows must keep controls accessible by scrolling.
         SetWindowPos(app.hwnd,nullptr,0,0,
                      std::min(scale(app,450),availableWidth-32),
                      std::min(scale(app,490),availableHeight-32),
                      SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);
-        SendMessageW(app.hwnd,WM_VSCROLL,MAKEWPARAM(SB_BOTTOM,0),0);
+        RECT beforeHeader{};GetWindowRect(app.title,&beforeHeader);
+        SendMessageW(app.page,WM_VSCROLL,MAKEWPARAM(SB_BOTTOM,0),0);
         if(app.scroll_y<=0)valid=false;
-        HWND log=GetDlgItem(app.hwnd,ID_LOG);
+        RECT afterHeader{};GetWindowRect(app.title,&afterHeader);
+        if(!EqualRect(&beforeHeader,&afterHeader))valid=false;
+        HWND log=controlById(ID_LOG);
         if(!log || !IsWindowVisible(log))valid=false;
+        RECT pageBounds{},logBounds{};
+        GetWindowRect(app.page,&pageBounds);
+        GetWindowRect(log,&logBounds);
+        RECT intersection{};
+        if(!IntersectRect(&intersection,&pageBounds,&logBounds))valid=false;
         DestroyWindow(app.hwnd);
         return valid?0:3;
     }
