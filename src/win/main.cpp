@@ -510,7 +510,7 @@ bool create_controls(App& a){
         SendMessageW(a.mode,CB_SETCURSEL,0,0);
     }
     a.info=child(a.page,L"STATIC",L"",SS_LEFT,ID_INFO);
-    a.progress=child(a.page,PROGRESS_CLASSW,L"",PBS_SMOOTH,ID_PROGRESS);
+    a.progress=child(a.page,L"BootrivaProgress",L"",0,ID_PROGRESS);
     a.status=child(a.page,L"STATIC",L"",SS_LEFT,ID_STATUS);
     a.log=child(a.page,L"EDIT",L"",ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_BORDER|WS_TABSTOP,ID_LOG);
     // Win32 CreateWindowEx can fail. Check every required child before dereferencing it.
@@ -522,8 +522,7 @@ bool create_controls(App& a){
     for(HWND h:{a.subtitle,a.version,a.catalog_label,a.catalog,a.catalog_open,a.catalog_note,a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,a.flash,a.mode_label,a.mode,a.winusb,a.info,a.status,a.log,a.lang})font(h,a.font);
     font(a.title,a.title_font);font(a.version,a.small_font);font(a.info,a.small_font);font(a.log,a.small_font);font(a.catalog_note,a.small_font);
     for(HWND h:{a.catalog_label,a.device_label,a.image_label,a.mode_label})font(h,a.small_font);
-    SendMessageW(a.progress,PBM_SETBARCOLOR,0,static_cast<LPARAM>(ACCENT));
-    SendMessageW(a.progress,PBM_SETBKCOLOR,0,static_cast<LPARAM>(RGB(232,239,248)));
+    SendMessageW(a.progress,PBM_SETPOS,0,0);
     translate(a);
     RECT r;GetClientRect(a.hwnd,&r);layout(a,r.right-r.left,r.bottom-r.top);
     refresh_drives(a);
@@ -545,6 +544,40 @@ void refresh_fonts(App& a){
     if(previous)DeleteObject(previous);
     if(previousTitle)DeleteObject(previousTitle);
     if(previousSmall)DeleteObject(previousSmall);
+}
+LRESULT CALLBACK progress_proc(HWND hwnd,UINT msg,WPARAM w,LPARAM l){
+    switch(msg){
+    case PBM_SETPOS:{
+        const int old=static_cast<int>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
+        SetWindowLongPtrW(hwnd,GWLP_USERDATA,
+                          static_cast<LONG_PTR>(std::clamp(static_cast<int>(w),0,100)));
+        InvalidateRect(hwnd,nullptr,FALSE);
+        return old;
+    }
+    case WM_ERASEBKGND:return 1;
+    case WM_PAINT:{
+        PAINTSTRUCT ps{};HDC dc=BeginPaint(hwnd,&ps);
+        RECT rc{};GetClientRect(hwnd,&rc);
+        HBRUSH track=CreateSolidBrush(RGB(226,232,241));
+        HPEN noPen=static_cast<HPEN>(GetStockObject(NULL_PEN));
+        HGDIOBJ oldBrush=SelectObject(dc,track),oldPen=SelectObject(dc,noPen);
+        RoundRect(dc,rc.left,rc.top,rc.right,rc.bottom,10,10);
+        int value=static_cast<int>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
+        int filled=MulDiv(static_cast<int>(rc.right-rc.left),value,100);
+        if(filled>0){
+            HBRUSH active=CreateSolidBrush(ACCENT);
+            SelectObject(dc,active);
+            RoundRect(dc,rc.left,rc.top,rc.left+filled,rc.bottom,10,10);
+            SelectObject(dc,track);
+            DeleteObject(active);
+        }
+        SelectObject(dc,oldPen);SelectObject(dc,oldBrush);
+        DeleteObject(track);
+        EndPaint(hwnd,&ps);
+        return 0;
+    }
+    }
+    return DefWindowProcW(hwnd,msg,w,l);
 }
 LRESULT CALLBACK page_proc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     HWND owner=GetParent(hwnd);
@@ -749,6 +782,11 @@ int run_app(HINSTANCE instance,int show,bool smoke){
     pageClass.lpszClassName=L"BootrivaPage";
     pageClass.hCursor=LoadCursorW(nullptr,IDC_ARROW);
     if(!RegisterClassExW(&pageClass))return 1;
+    WNDCLASSEXW progressClass{sizeof(progressClass)};
+    progressClass.hInstance=instance;
+    progressClass.lpfnWndProc=progress_proc;
+    progressClass.lpszClassName=L"BootrivaProgress";
+    if(!RegisterClassExW(&progressClass))return 1;
     if(!RegisterClassExW(&klass))return 1;
     App app;
     // Default to a compact Rufus-like *normal window*, centered in the
