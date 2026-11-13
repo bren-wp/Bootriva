@@ -209,7 +209,7 @@ void paint_button(DRAWITEMSTRUCT* item){
     RECT r=item->rcItem;DrawTextW(item->hDC,title,-1,&r,DT_CENTER|DT_VCENTER|DT_SINGLELINE);
     if(item->itemState&ODS_FOCUS){RECT inset=item->rcItem;InflateRect(&inset,-3,-3);DrawFocusRect(item->hDC,&inset);}
 }
-void create_controls(App& a){
+bool create_controls(App& a){
     a.background=CreateSolidBrush(BG);a.panel=CreateSolidBrush(PANEL);
     a.font=CreateFontW(-18,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
     a.title_font=CreateFontW(-36,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
@@ -230,23 +230,44 @@ void create_controls(App& a){
     a.progress=child(a.hwnd,PROGRESS_CLASSW,L"",PBS_SMOOTH,ID_PROGRESS);
     a.status=child(a.hwnd,L"STATIC",L"",SS_LEFT,ID_STATUS);
     a.log=child(a.hwnd,L"EDIT",L"",ES_READONLY|ES_MULTILINE|ES_AUTOVSCROLL|WS_VSCROLL|WS_BORDER,ID_LOG);
+    // Win32 CreateWindowEx can fail. Check every required child before dereferencing it.
+    for(HWND h:{a.title,a.subtitle,a.version,a.lang,a.device_label,a.dev,a.refresh,
+                a.image_label,a.image,a.browse,a.hash,a.flash,a.info,a.progress,a.status,a.log}){
+        if(!h)return false;
+    }
     for(HWND h:{a.subtitle,a.version,a.device_label,a.dev,a.refresh,a.image_label,a.image,a.browse,a.hash,a.flash,a.info,a.status,a.log,a.lang})font(h,a.font);
     font(a.title,a.title_font);font(a.version,a.small_font);font(a.info,a.small_font);font(a.log,a.small_font);
     translate(a);
     RECT r;GetClientRect(a.hwnd,&r);layout(a,r.right-r.left,r.bottom-r.top);
     refresh_drives(a);
+    return true;
 }
 LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     auto* app=reinterpret_cast<App*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));
     if(message==WM_NCCREATE){
         auto* cs=reinterpret_cast<CREATESTRUCTW*>(l);
-        SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+        if(!cs || !cs->lpCreateParams)return FALSE;
+        auto* owner=static_cast<App*>(cs->lpCreateParams);
+        // WM_CREATE is dispatched inside CreateWindowEx, *before* that call
+        // returns to wWinMain. All child creation must already know the HWND.
+        owner->hwnd=hwnd;
+        SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(owner));
         return TRUE;
     }
     if(!app)return DefWindowProcW(hwnd,message,w,l);
     App& a=*app;
     switch(message){
-    case WM_CREATE:{BOOL dark=TRUE;DwmSetWindowAttribute(hwnd,20,&dark,sizeof(dark));create_controls(a);return 0;}
+    case WM_CREATE:{
+        BOOL dark=TRUE;
+        DwmSetWindowAttribute(hwnd,20,&dark,sizeof(dark));
+        if(!create_controls(a)){
+#if !defined(BOOTRIVA_UI_SMOKE)
+            MessageBoxW(hwnd,L"Could not initialize BOOTRIVA controls. Please report this error.",L"BOOTRIVA",MB_OK|MB_ICONERROR);
+#endif
+            return -1;
+        }
+        return 0;
+    }
     case WM_GETMINMAXINFO:{
         auto* m=reinterpret_cast<MINMAXINFO*>(l);m->ptMinTrackSize={720,610};return 0;
     }
@@ -287,6 +308,7 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
         }
         return reinterpret_cast<LRESULT>(a.panel);
     }
+    case WM_ERASEBKGND:return 1; // One background paint; avoid a white startup flash.
     case WM_PAINT:{
         PAINTSTRUCT ps{};HDC dc=BeginPaint(hwnd,&ps);
         RECT r{};GetClientRect(hwnd,&r);FillRect(dc,&r,a.background);
@@ -301,21 +323,50 @@ LRESULT CALLBACK wndproc(HWND hwnd,UINT message,WPARAM w,LPARAM l){
     return DefWindowProcW(hwnd,message,w,l);
 }
 }
-int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show){
+int run_app(HINSTANCE instance,int show,bool smoke){
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     INITCOMMONCONTROLSEX common{sizeof(common),ICC_PROGRESS_CLASS};InitCommonControlsEx(&common);
     WNDCLASSEXW klass{sizeof(klass)};
     klass.hInstance=instance;klass.lpfnWndProc=wndproc;klass.lpszClassName=L"BootrivaMainWindow";
     klass.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(101));
     klass.hIconSm=klass.hIcon;
-    klass.hCursor=LoadCursorW(nullptr,IDC_ARROW);klass.hbrBackground=GetSysColorBrush(COLOR_WINDOW);
+    klass.hCursor=LoadCursorW(nullptr,IDC_ARROW);klass.hbrBackground=nullptr;
     if(!RegisterClassExW(&klass))return 1;
     App app;
-    app.hwnd=CreateWindowExW(0,klass.lpszClassName,L"BOOTRIVA — USB Creator",WS_OVERLAPPEDWINDOW,
+    app.hwnd=CreateWindowExW(0,klass.lpszClassName,L"BOOTRIVA — USB Creator",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,
                              CW_USEDEFAULT,CW_USEDEFAULT,860,660,nullptr,nullptr,instance,&app);
     if(!app.hwnd)return 1;
     ShowWindow(app.hwnd,show);UpdateWindow(app.hwnd);
+    if(smoke){
+        // Test the actual Win32 initialization path, not a mock UI.
+        constexpr int required[]={ID_TITLE,ID_SUBTITLE,ID_DEV,ID_REFRESH,ID_IMAGE,
+            ID_BROWSE,ID_HASH,ID_FLASH,ID_LANG,ID_PROGRESS,ID_STATUS,ID_LOG};
+        bool valid=true;
+        for(int id:required){
+            HWND control=GetDlgItem(app.hwnd,id);
+            if(!control || !IsWindowVisible(control)){
+                OutputDebugStringW(L"BOOTRIVA smoke: missing or hidden child control");
+                valid=false;
+            }
+        }
+        wchar_t text[80]{};
+        HWND title=GetDlgItem(app.hwnd,ID_TITLE);
+        if(!title || !GetWindowTextW(title,text,80) || std::wstring(text)!=L"BOOTRIVA")
+            valid=false;
+        RECT bounds{};
+        if(!GetClientRect(app.hwnd,&bounds) || bounds.right<500 || bounds.bottom<400)
+            valid=false;
+        DestroyWindow(app.hwnd);
+        return valid?0:3;
+    }
     MSG msg{};
     while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}
     return static_cast<int>(msg.wParam);
 }
+#if defined(BOOTRIVA_UI_SMOKE)
+int main(){return run_app(GetModuleHandleW(nullptr),SW_SHOWNORMAL,true);}
+#else
+int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int show){
+    return run_app(instance,show,false);
+}
+#endif

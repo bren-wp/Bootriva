@@ -41,6 +41,13 @@ Every version-tagged build is configured to publish both **`BOOTRIVA-Portable.ex
 
 **Portable:** no installation required; run it as administrator. **Setup:** traditional installation and Start menu shortcuts.
 
+## 🛠️ Startup UI fix
+The Windows window-creation regression reported with `v0.2.0-preview.1`
+is addressed in the current development branch. Win32 controls are now
+initialized with the parent window handle during `WM_NCCREATE`, the background
+does not overpaint child controls, and CI runs an explicit GUI-control smoke test.
+**The fix is pending validation against a real Windows desktop screenshot.**
+
 ## 🪟 Interface gallery
 
 **Real Windows screenshots only.** Screenshots will be added after a compiled application is run and captured on Windows and its identity verified. We intentionally do not show placeholder mockups as real application screens.
