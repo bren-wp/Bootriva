@@ -16,6 +16,28 @@
 
 ---
 
+## Real Windows 11 interface — WinUI 3 preview (v0.2.5)
+
+BOOTRIVA is transitioning to **Microsoft WinUI 3 and the Windows App SDK**:
+real Fluent/XAML controls, compact adaptive cards, Windows native pickers,
+native scrolling, clear status, no Electron, no HTML and no WebView.
+
+**Three GitHub release binaries during transition:**
+- **BOOTRIVA-Portable.exe** — current **C++ USB writer**, feature-preserving classic UI.
+- **BOOTRIVA-Setup.exe** — current C++ installation package.
+- **BOOTRIVA-WinUI3-Preview.exe** — a self-contained, **read-only** native WinUI 3 UI
+  to evaluate the next-generation experience. Includes official Microsoft
+  ISO catalogue, image picker, image-header inspection, removable-drive
+  enumeration and asynchronous SHA-256. **No USB formatting or writing in the preview.**
+
+WinUI 3 does **not** replace the working writer until image inspection, raw
+USB writing and verification, cancellation, ISO media preparation, complete
+device identity checks and physical USB hardware qualification are restored
+behind a hardened C++ interop bridge.
+
+[WinUI 3 migration and testing gates](docs/WINUI3-MIGRATION.md) |
+[Official Windows App SDK deployment guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/unpackage-winui-app)
+
 ## One USB creator. Zero unnecessary complexity.
 
 BOOTRIVA pairs a focused native Windows interface with a deliberately defensive USB-writing engine. No account, adverts, or telemetry. Just a connected USB drive, your disk image, and clear progress and verification.

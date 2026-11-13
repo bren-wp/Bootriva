@@ -68,9 +68,37 @@ jobs:
             dist/BOOTRIVA-Setup.exe
             dist/SHA256SUMS.txt
           if-no-files-found: error
+  winui3-preview:
+    name: Native WinUI 3 shell build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile self-contained WinUI 3 preview
+        shell: pwsh
+        run: |
+          dotnet publish ui/Bootriva.Modern/Bootriva.Modern.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o modern-dist
+          if ($LASTEXITCODE -ne 0) { throw 'WinUI 3 build failed' }
+          $exe = 'modern-dist/Bootriva.Modern.exe'
+          if (-not (Test-Path $exe) -or (Get-Item $exe).Length -lt 1048576) {
+            throw 'WinUI 3 preview binary missing or unexpectedly small'
+          }
+          Copy-Item $exe 'modern-dist/BOOTRIVA-WinUI3-Preview.exe'
+          $hash = (Get-FileHash 'modern-dist/BOOTRIVA-WinUI3-Preview.exe' -Algorithm SHA256).Hash
+          "$hash  BOOTRIVA-WinUI3-Preview.exe" | Set-Content -Encoding ascii 'modern-dist/SHA256SUMS-WINUI3.txt'
+      - name: Upload genuine WinUI 3 preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: BOOTRIVA-WinUI3-x64-unsigned-preview
+          path: |
+            modern-dist/BOOTRIVA-WinUI3-Preview.exe
+            modern-dist/SHA256SUMS-WINUI3.txt
+          if-no-files-found: error
   publish-preview:
     name: Publish tested Portable and Setup
-    needs: [linux-core, windows-packaging]
+    needs: [linux-core, windows-packaging, winui3-preview]
     # This preview version is released exactly once on merge to main.
     # Future release versions should update preview_tag before merging.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -80,13 +108,18 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
-      PREVIEW_TAG: v0.2.4-preview.1
+      PREVIEW_TAG: v0.2.5-preview.1
     steps:
       - name: Download verified Windows binaries
         uses: actions/download-artifact@v4
         with:
           name: BOOTRIVA-Windows-x64-unsigned
           path: release
+      - name: Download tested modern WinUI 3 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: BOOTRIVA-WinUI3-x64-unsigned-preview
+          path: modern
       - name: Check artifacts and publish GitHub prerelease
         shell: bash
         run: |
@@ -95,6 +128,7 @@ jobs:
           test -s release/BOOTRIVA-Setup.exe
           test -s release/SHA256SUMS.txt
           (cd release && sha256sum --check SHA256SUMS.txt)
+          (cd modern && sha256sum --check SHA256SUMS-WINUI3.txt)
           if gh release view "$PREVIEW_TAG" >/dev/null 2>&1; then
             echo "Prerelease $PREVIEW_TAG already exists; leaving it unchanged."
           else
@@ -102,8 +136,10 @@ jobs:
               release/BOOTRIVA-Portable.exe \
               release/BOOTRIVA-Setup.exe \
               release/SHA256SUMS.txt \
+              modern/BOOTRIVA-WinUI3-Preview.exe \
+              modern/SHA256SUMS-WINUI3.txt \
               --target "${{ github.sha }}" \
-              --title "BOOTRIVA $PREVIEW_TAG · Fluent layout fixes" \
-              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Fixes screenshot-reported clipping with isolated scrolling and sticky header. Uses cohesive light Fluent surfaces, smaller cards, clearer buttons and a custom progress track. Real USB hardware validation and genuine screenshots remain pending." \
+              --title "BOOTRIVA $PREVIEW_TAG · Genuine WinUI 3 shell" \
+              --notes "Experimental unsigned Windows preview. Both Portable and Setup are built and checked in CI. Adds an actual Windows App SDK WinUI 3 native XAML interface, official ISO catalog, ISO picker, read-only removable drive list and SHA-256. This separate WinUI preview does not write USB. Existing functional classic Portable and Setup retain the C++ engine until feature parity is safely achieved. Real USB hardware validation and genuine screenshots remain pending." \
               --prerelease
           fi

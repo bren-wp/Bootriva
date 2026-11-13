@@ -58,3 +58,11 @@ Input: actual Windows screenshot from the user (2026-11-13), demonstrating clipp
 Correction: fixed header stays on parent window; card controls live inside child viewport, which clips scrolling at the header boundary and forwards Win32 control commands, paint/draw and status messages to the parent. A light Fluent palette harmonizes standard Windows widgets. Layout labels and action controls use compact dimensions; progress is painted by a separate native Win32 class.
 
 Automated smoke: native startup controls, official ISO entries, nonmaximized initial window, narrow-screen scroll to activity log, and immobility of header during scrolling. Real Windows screenshots and high-DPI hardware verification remain open.
+
+## v0.2.5 WinUI 3 modernization
+
+- Add Windows App SDK 2.6.4 self-contained unpackaged XAML project for WinUI 3.
+- Build self-contained single-file WinUI preview on GitHub Actions with .NET 10.
+- Release publication is conditioned on WinUI build and the existing C++ Windows/Linux jobs.
+- WinUI binary is **read-only** for disk operations. It does not become the primary writer until safety bridging and hardware certification.
+- Modern GUI runtime screenshot, Windows 11 high-DPI testing and accessibility checks are still required.
