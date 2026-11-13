@@ -48,3 +48,11 @@
 - [x] Add smoke regression for header position after scrolling to end of the page.
 - [ ] Check screenshot before/after on a physical Windows desktop at multiple zoom factors and inspect contrast/accessibility.
 - [ ] Review keyboard accessibility and native UI Automation semantics of custom controls.
+
+## v0.2.5 — actual WinUI 3 modernization
+- [x] Introduce Windows App SDK WinUI 3 XAML project, no Electron, no WebView.
+- [x] Add official Microsoft catalogue, image picker, read-only disk preview and SHA-256 tool in WinUI.
+- [x] Formalize hardware/safety gates before switching to the WinUI shell.
+- [ ] Verify the WinUI app compiles, launches and packages on Windows CI.
+- [ ] Implement a C++/WinUI safe bridge while preserving the existing USB engine.
+- [ ] Design and validate real screenshots and accessible keyboard-navigation.
